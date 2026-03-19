@@ -1,5 +1,5 @@
-import { ClientEarthExperience } from '@/components/earth/ClientEarthExperience';
+import { ClientSolarSystemExperience } from '@/components/solar-system/ClientSolarSystemExperience';
 
 export default function Page() {
-  return <ClientEarthExperience />;
+  return <ClientSolarSystemExperience />;
 }

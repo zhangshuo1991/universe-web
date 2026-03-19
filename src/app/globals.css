@@ -135,7 +135,7 @@ input::placeholder {
   display: grid;
   gap: 18px;
   align-content: start;
-  font-size: 0.93rem;
+  font-size: 0.85rem;
 }
 
 .sidebarTopbar {
@@ -225,15 +225,15 @@ input::placeholder {
 .heroCard h1 {
   margin: 0;
   font-family: var(--font-display), sans-serif;
-  font-size: clamp(1.62rem, 4vw, 2.48rem);
+  font-size: clamp(1.42rem, 3.2vw, 2.12rem);
   letter-spacing: 0.04em;
 }
 
 .heroCopy {
   margin: 14px 0 0;
-  line-height: 1.58;
+  line-height: 1.52;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 0.88rem;
 }
 
 .statRow,
@@ -287,12 +287,12 @@ input::placeholder {
 
 .panelHeader span {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
 }
 
 .panelHeader strong {
   color: var(--warm);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   margin: 0;
   text-align: right;
 }
@@ -321,7 +321,12 @@ input::placeholder {
 .buttonRow button,
 .presetGrid button,
 .toggle {
-  padding: 11px 14px;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  line-height: 1.15;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .presetGrid {
@@ -372,7 +377,8 @@ input::placeholder {
 .chip {
   border-radius: 999px;
   padding: 7px 12px;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .chip.active {
@@ -401,6 +407,9 @@ input::placeholder {
   border-radius: 20px;
   text-align: left;
   background: rgba(9, 20, 35, 0.72);
+  border: 1px solid rgba(132, 173, 230, 0.14);
+  text-decoration: none;
+  color: inherit;
 }
 
 .resultItem strong {
@@ -410,12 +419,21 @@ input::placeholder {
 
 .resultItem span {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   line-height: 1.45;
 }
 
 .satelliteItem {
   border-color: rgba(94, 234, 212, 0.18);
+}
+
+.citationItem {
+  border-color: rgba(247, 185, 85, 0.24);
+}
+
+.citationItem:hover {
+  border-color: rgba(247, 185, 85, 0.45);
+  background: rgba(26, 18, 9, 0.6);
 }
 
 .inertialCopy {
@@ -582,5 +600,538 @@ input::placeholder {
 
   .viewerOverlay {
     flex-direction: column;
+  }
+}
+
+.solarStage {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  min-height: 100vh;
+  gap: 22px;
+  padding: 22px;
+}
+
+.solarStage.sidebarCollapsed {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.solarSidebar {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+  font-size: 0.81rem;
+}
+
+.solarStage.sidebarCollapsed .solarSidebar > :not(.solarTopbar) {
+  display: none;
+}
+
+.solarTopbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.solarSidebar .heroCard h1 {
+  font-size: clamp(1.18rem, 2.2vw, 1.56rem);
+}
+
+.solarSidebar .heroCopy {
+  font-size: 0.82rem;
+}
+
+.solarMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 22px;
+  min-width: 0;
+}
+
+.solarStage.exploreMode .analysisRail {
+  opacity: 0.78;
+}
+
+.solarStage.exploreMode .solarMain {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+}
+
+.solarViewerFrame {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(5, 11, 21, 0.96), rgba(8, 18, 34, 0.88));
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+  min-height: calc(100vh - 44px);
+}
+
+.solarViewerHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 18px 22px 0;
+}
+
+.solarViewerHeader span,
+.viewerOverlayCard span,
+.providerRow span,
+.metricCard span,
+.detailRows span,
+.surfaceLayerList > span {
+  display: block;
+  font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.solarViewerHeader strong,
+.viewerOverlayCard strong,
+.metricCard strong,
+.detailRows strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.viewerBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.viewerBadges span,
+.panelPill,
+.modeBtn,
+.bodyListItem,
+.surfaceLayerLink,
+.citationRow,
+.artifactCard,
+.providerRow,
+.metricCard {
+  border: 1px solid rgba(132, 173, 230, 0.16);
+}
+
+.viewerBadges span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(10, 20, 38, 0.8);
+  font-size: 0.72rem;
+}
+
+.solarMapWrap {
+  position: relative;
+  padding: 20px;
+  min-height: 620px;
+}
+
+.solarCesiumContainer {
+  width: 100%;
+  height: 100%;
+  min-height: 620px;
+  border-radius: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at center, rgba(247, 185, 85, 0.08), transparent 18%),
+    radial-gradient(circle at 30% 20%, rgba(94, 234, 212, 0.06), transparent 28%),
+    radial-gradient(circle at 70% 80%, rgba(77, 164, 255, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(4, 9, 18, 0.88), rgba(3, 8, 15, 0.96));
+}
+
+.solarMap {
+  width: 100%;
+  height: 100%;
+  min-height: 620px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at center, rgba(247, 185, 85, 0.08), transparent 18%),
+    radial-gradient(circle at 30% 20%, rgba(94, 234, 212, 0.06), transparent 28%),
+    radial-gradient(circle at 70% 80%, rgba(77, 164, 255, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(4, 9, 18, 0.88), rgba(3, 8, 15, 0.96));
+}
+
+.orbitStroke {
+  fill: none;
+  stroke: rgba(132, 173, 230, 0.12);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 12;
+}
+
+.bodyGlyph {
+  cursor: pointer;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.bodyGlyph:hover {
+  opacity: 0.92;
+}
+
+.bodyGlyph text {
+  fill: rgba(237, 244, 255, 0.88);
+  font-size: 18px;
+  font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
+  pointer-events: none;
+}
+
+.bodyGlyph.active text {
+  fill: #fff7d0;
+}
+
+.viewerOverlayCard {
+  position: absolute;
+  max-width: 280px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(6, 15, 29, 0.76);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.3);
+}
+
+.viewerOverlayCard.topLeft {
+  left: 30px;
+  top: 36px;
+}
+
+.viewerOverlayCard.topRight {
+  right: 30px;
+  top: 36px;
+  text-align: right;
+}
+
+.viewerOverlayCard small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.solarStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.metricCard {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.metricCard small,
+.detailRows small,
+.providerRow small,
+.citationRow small,
+.artifactCard small {
+  color: var(--muted);
+}
+
+.analysisRail {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.modeSwitch,
+.clockRow {
+  display: grid;
+  gap: 10px;
+}
+
+.modeSwitch {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.modeBtn,
+.panelPill,
+.bodyListItem {
+  padding: 9px 10px;
+  border-radius: 16px;
+  background: rgba(8, 18, 34, 0.78);
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.modeBtn.active,
+.panelPill.active,
+.bodyListItem.active {
+  background: rgba(94, 234, 212, 0.14);
+  border-color: rgba(94, 234, 212, 0.4);
+}
+
+.panelPill.compact {
+  text-transform: none;
+}
+
+.solarPresetGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.solarToggleGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panelPill strong,
+.bodyListItem strong {
+  display: block;
+}
+
+.panelPill span,
+.bodyListItem small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+
+.bodyList,
+.providerList,
+.citationList,
+.artifactList,
+.chatTranscript,
+.surfaceLayerList {
+  display: grid;
+  gap: 10px;
+}
+
+.bodyList {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.bodyListItem {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.bodySwatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.18);
+}
+
+.providerRow,
+.citationRow,
+.surfaceLayerLink,
+.artifactCard {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.providerRow div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hintText {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.chatTranscript {
+  max-height: 280px;
+  overflow: auto;
+  margin-top: 10px;
+}
+
+.solarClockRow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.solarClockRow button {
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
+  font-size: 0.74rem;
+}
+
+.smallBodyList {
+  display: grid;
+  gap: 10px;
+}
+
+.smallBodyFilterRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.smallBodyRow {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(132, 173, 230, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+.smallBodyRow:hover {
+  border-color: rgba(247, 185, 85, 0.35);
+}
+
+.smallBodyRow.active {
+  border-color: rgba(94, 234, 212, 0.45);
+  background: rgba(94, 234, 212, 0.08);
+}
+
+.smallBodyMeta {
+  display: grid;
+  gap: 4px;
+}
+
+.smallBodyMeta span {
+  display: block;
+  font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.chatBubble {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.chatBubble.user {
+  border-left: 3px solid rgba(94, 234, 212, 0.5);
+}
+
+.chatBubble.assistant {
+  border-left: 3px solid rgba(247, 185, 85, 0.5);
+}
+
+.chatBubble p {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
+.detailStack {
+  display: grid;
+  gap: 14px;
+}
+
+.detailStack p {
+  margin: 0;
+  line-height: 1.58;
+  color: var(--muted);
+}
+
+.detailRows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detailRows div {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.artifactCard pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 0.72rem;
+  color: #cfe1ff;
+}
+
+@media (max-width: 1380px) {
+  .solarMain,
+  .solarStage.exploreMode .solarMain {
+    grid-template-columns: 1fr;
+  }
+
+  .analysisRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1080px) {
+  .solarStage,
+  .solarStage.sidebarCollapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .solarSidebar {
+    order: 2;
+  }
+
+  .solarMain {
+    order: 1;
+  }
+
+  .solarViewerFrame {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 780px) {
+  .solarStage {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .solarMapWrap {
+    min-height: 440px;
+    padding: 14px;
+  }
+
+  .solarMap {
+    min-height: 420px;
+  }
+
+  .solarCesiumContainer {
+    min-height: 420px;
+  }
+
+  .viewerOverlayCard.topLeft,
+  .viewerOverlayCard.topRight {
+    position: static;
+    max-width: none;
+    margin: 0 0 10px;
+    text-align: left;
+  }
+
+  .solarViewerHeader,
+  .providerRow div,
+  .solarStatsGrid,
+  .analysisRail,
+  .detailRows,
+  .smallBodyFilterRow,
+  .solarPresetGrid,
+  .modeSwitch,
+  .clockRow {
+    grid-template-columns: 1fr;
+  }
+
+  .solarViewerHeader {
+    display: grid;
+  }
+
+  .solarStatsGrid {
+    padding-top: 10px;
   }
 }

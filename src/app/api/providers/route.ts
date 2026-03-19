@@ -5,7 +5,8 @@ import { getProviderCatalog } from '@/server/observation/catalog';
 export const runtime = 'nodejs';
 
 export async function GET() {
+  const providers = await getProviderCatalog();
   return NextResponse.json({
-    providers: getProviderCatalog()
+    providers
   });
 }

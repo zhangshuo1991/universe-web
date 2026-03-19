@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { runAgent } from '@/agent/runAgent';
+import { getProviderCatalog } from '@/server/observation/catalog';
 import type { AgentContext } from '@/types/agent';
 
 const requestSchema = z.object({
@@ -35,14 +36,22 @@ export async function POST(request: NextRequest) {
   try {
     const payload = requestSchema.parse(await request.json());
     const result = await runAgent(payload.messages, payload.context as AgentContext);
-    return NextResponse.json(result);
+    const providerSnapshot = await getProviderCatalog();
+    return NextResponse.json({
+      ...result,
+      providerSnapshot
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown agent error';
+    const message = error instanceof Error ? error.message : 'Unknown analyze error';
+    const providerSnapshot = await getProviderCatalog();
     return NextResponse.json(
       {
         provider: 'fallback',
         actions: [],
-        reply: message
+        citations: [],
+        artifacts: [],
+        reply: message,
+        providerSnapshot
       },
       { status: 400 }
     );

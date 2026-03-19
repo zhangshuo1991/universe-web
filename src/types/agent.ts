@@ -9,8 +9,19 @@ export type ViewerLayerId =
   | 'cityMarkers'
   | 'moon'
   | 'satellites'
+  | 'earthquakes'
   | 'weatherClouds'
-  | 'weatherTemperature';
+  | 'weatherTemperature'
+  | 'planetOrbits'
+  | 'planetLabels'
+  | 'majorMoons'
+  | 'spaceWeather'
+  | 'surfaceOverlays'
+  | 'smallBodies';
+
+export type SolarViewPresetId = 'inner' | 'outer' | 'full' | 'earthMoon';
+
+export type InterfaceMode = 'explore' | 'analysis';
 
 export type FlyToAction = {
   type: 'fly_to';
@@ -50,6 +61,27 @@ export type SetInertialModeAction = {
   };
 };
 
+export type FocusBodyAction = {
+  type: 'focus_body';
+  payload: {
+    bodyId: string;
+  };
+};
+
+export type SetViewPresetAction = {
+  type: 'set_view_preset';
+  payload: {
+    presetId: SolarViewPresetId;
+  };
+};
+
+export type SetInterfaceModeAction = {
+  type: 'set_interface_mode';
+  payload: {
+    mode: InterfaceMode;
+  };
+};
+
 export type ToggleLayerAction = {
   type: 'toggle_layer';
   payload: {
@@ -86,6 +118,9 @@ export type AgentAction =
   | PlayTimeAction
   | PauseTimeAction
   | SetInertialModeAction
+  | FocusBodyAction
+  | SetViewPresetAction
+  | SetInterfaceModeAction
   | ToggleLayerAction
   | AddAnnotationAction
   | ClearAnnotationsAction
@@ -99,6 +134,9 @@ export type AgentContext = {
     lon: number;
     label?: string;
   } | null;
+  selectedBodyId?: string | null;
+  activePreset?: SolarViewPresetId | null;
+  interfaceMode?: InterfaceMode | null;
   layers: Record<ViewerLayerId, boolean>;
 };
 

@@ -38,6 +38,7 @@ import {
   getSolarPointInfo
 } from '@/simulation/astronomy';
 import { useViewerStore } from '@/store/viewerStore';
+import type { LayerDescriptor, ProviderDescriptor } from '@/types/observation';
 import type { AgentMessage, AgentResponsePayload, ViewerLayerId } from '@/types/agent';
 
 type GeocodeResult = {
@@ -75,8 +76,27 @@ type SatelliteSnapshot = {
   altitudeKm: number;
 };
 
+type EarthquakeEvent = {
+  id: string;
+  magnitude: number | null;
+  place: string;
+  timeIso: string | null;
+  coordinates: number[];
+  title?: string;
+};
+
+type LocationSnapshot = {
+  temperatureC: number | null;
+  humidityPct: number | null;
+  windKmh: number | null;
+  nearestQuake: EarthquakeEvent | null;
+  nearestQuakeDistanceKm: number | null;
+};
+
 type Locale = 'en' | 'zh';
 const LOCALE_STORAGE_KEY = 'earth-observer-locale';
+const SIM_TICK_INTERVAL_MS = 100;
+const SATELLITE_UPDATE_INTERVAL_MS = 1000;
 
 const ANCHOR_CITIES = [
   { label: 'Shanghai', lat: 31.2304, lon: 121.4737 },
@@ -123,6 +143,17 @@ const I18N = {
     latitude: 'Latitude',
     longitude: 'Longitude',
     gmst: 'GMST',
+    moonDistance: 'Moon Distance',
+    citySnapshot: 'City Snapshot',
+    weatherNow: 'Weather Now',
+    humidity: 'Humidity',
+    windSpeed: 'Wind Speed',
+    nearestQuake: 'Nearest Quake',
+    aiCityBrief: 'AI City Brief',
+    generateBrief: 'Generate Brief',
+    generating: 'Generating...',
+    noCitySnapshot: 'Select a city or click the globe to load local data.',
+    unknown: 'Unknown',
     selectedSurfacePoint: 'Selected Surface Point',
     locked: 'LOCKED',
     none: 'NONE',
@@ -134,6 +165,9 @@ const I18N = {
     nighttime: 'Night',
     clickEarthHint: 'Click on Earth to inspect local solar geometry.',
     orbitalObjects: 'Orbital Objects',
+    earthquakeEvents: 'Earthquake Events',
+    refreshing: 'REFRESHING',
+    eventFeedEmpty: 'No earthquake events loaded yet.',
     syncing: 'SYNCING',
     tracking: 'TRACKING',
     hidden: 'HIDDEN',
@@ -143,12 +177,20 @@ const I18N = {
     temperatureMonth: 'Temperature Month (UTC)',
     useToday: 'Use Today',
     alignSimTime: 'Align With Sim Time',
+    dataProviders: 'Data Providers',
+    layerCatalog: 'Layer Catalog',
+    availability: 'Availability',
+    optionalProvider: 'Optional',
+    available: 'Available',
+    degraded: 'Degraded',
+    disabled: 'Disabled',
     viewerLayers: 'Viewer Layers',
     dayNight: 'Day/Night Lighting',
     atmosphere: 'Atmosphere',
     cityMarkers: 'Anchor Cities',
     moon: 'Moon',
     satellites: 'Satellites',
+    earthquakes: 'Earthquakes',
     weatherClouds: 'Cloud Fraction',
     weatherTemperature: 'Temperature',
     llmControlConsole: 'LLM Control Console',
@@ -179,6 +221,9 @@ const I18N = {
     geocodeNone: 'No matched place found.',
     geocodeUnavailable: 'Geocoding is temporarily unavailable.',
     satellitePartial: 'Satellite feed partially available: {ok} success, {fail} failed.',
+    citations: 'Data Citations',
+    noCitations: 'No citations yet. Ask for weather, earthquakes, or comparative analysis.',
+    analysisArtifacts: 'Analysis Artifacts',
     all: 'All',
     stations: 'Stations',
     weather: 'Weather',
@@ -221,6 +266,17 @@ const I18N = {
     latitude: '纬度',
     longitude: '经度',
     gmst: '格林尼治恒星时',
+    moonDistance: '月地距离',
+    citySnapshot: '城市快照',
+    weatherNow: '当前天气',
+    humidity: '湿度',
+    windSpeed: '风速',
+    nearestQuake: '最近地震',
+    aiCityBrief: 'AI 城市摘要',
+    generateBrief: '生成摘要',
+    generating: '生成中...',
+    noCitySnapshot: '选择城市或点击地球表面后，这里会加载本地信息。',
+    unknown: '未知',
     selectedSurfacePoint: '观测点',
     locked: '已锁定',
     none: '无',
@@ -232,6 +288,9 @@ const I18N = {
     nighttime: '夜晚',
     clickEarthHint: '点击地球表面后，这里会显示当前观测点的太阳几何信息。',
     orbitalObjects: '轨道目标',
+    earthquakeEvents: '地震事件',
+    refreshing: '刷新中',
+    eventFeedEmpty: '暂时没有可显示的地震事件。',
     syncing: '同步中',
     tracking: '追踪中',
     hidden: '隐藏',
@@ -241,12 +300,20 @@ const I18N = {
     temperatureMonth: '气温月均月份 (UTC)',
     useToday: '使用今天',
     alignSimTime: '对齐模拟时间',
+    dataProviders: '数据源状态',
+    layerCatalog: '图层目录',
+    availability: '可用性',
+    optionalProvider: '可选增强',
+    available: '可用',
+    degraded: '降级',
+    disabled: '关闭',
     viewerLayers: '视图图层',
     dayNight: '昼夜光照',
     atmosphere: '大气层',
     cityMarkers: '锚点城市',
     moon: '月球',
     satellites: '卫星',
+    earthquakes: '地震',
     weatherClouds: '云量层',
     weatherTemperature: '气温层',
     llmControlConsole: 'LLM 控制台',
@@ -276,6 +343,9 @@ const I18N = {
     geocodeNone: '没有找到匹配地点。',
     geocodeUnavailable: '地名检索暂时不可用。',
     satellitePartial: '卫星源部分可用：{ok} 条成功，{fail} 条失败。',
+    citations: '数据引用',
+    noCitations: '还没有引用。你可以让 LLM 查询天气、地震或做位置对比分析。',
+    analysisArtifacts: '分析产物',
     all: '全部',
     stations: '空间站',
     weather: '气象',
@@ -395,12 +465,38 @@ function formatSeasonLabel(source: string, locale: Locale) {
   return source;
 }
 
+function providerStatusLabel(status: ProviderDescriptor['status'], t: <K extends keyof (typeof I18N)['en']>(key: K) => string) {
+  if (status === 'available') return t('available');
+  if (status === 'degraded') return t('degraded');
+  return t('disabled');
+}
+
+function earthquakeColor(magnitude: number | null) {
+  if (magnitude === null) return '#60a5fa';
+  if (magnitude >= 6.5) return '#ef4444';
+  if (magnitude >= 5) return '#f97316';
+  if (magnitude >= 4) return '#f59e0b';
+  return '#38bdf8';
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return 6371 * c;
+}
+
 export default function EarthExperience() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const cityLayerRef = useRef<CustomDataSource | null>(null);
   const annotationLayerRef = useRef<CustomDataSource | null>(null);
   const satelliteLayerRef = useRef<CustomDataSource | null>(null);
+  const earthquakeLayerRef = useRef<CustomDataSource | null>(null);
   const cloudLayerRef = useRef<ImageryLayer | null>(null);
   const temperatureLayerRef = useRef<ImageryLayer | null>(null);
   const inertialOffsetRef = useRef<Cartesian3 | null>(null);
@@ -418,6 +514,18 @@ export default function EarthExperience() {
   const [satelliteCategories, setSatelliteCategories] = useState<SatelliteCategory[]>([]);
   const [satelliteBusy, setSatelliteBusy] = useState(false);
   const [satelliteFeed, setSatelliteFeed] = useState<SatelliteFeedItem[]>([]);
+  const [earthquakeBusy, setEarthquakeBusy] = useState(false);
+  const [earthquakeEvents, setEarthquakeEvents] = useState<EarthquakeEvent[]>([]);
+  const [providerBusy, setProviderBusy] = useState(false);
+  const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
+  const [layerCatalog, setLayerCatalog] = useState<LayerDescriptor[]>([]);
+  const [moonDistanceKm, setMoonDistanceKm] = useState<number | null>(null);
+  const [locationSnapshotBusy, setLocationSnapshotBusy] = useState(false);
+  const [locationSnapshot, setLocationSnapshot] = useState<LocationSnapshot | null>(null);
+  const [cityBriefBusy, setCityBriefBusy] = useState(false);
+  const [cityBrief, setCityBrief] = useState('');
+  const [agentCitations, setAgentCitations] = useState<NonNullable<AgentResponsePayload['citations']>>([]);
+  const [agentArtifacts, setAgentArtifacts] = useState<NonNullable<AgentResponsePayload['artifacts']>>([]);
   const [cloudDate, setCloudDate] = useState(() => toIsoDateUTC(new Date()));
   const [temperatureMonth, setTemperatureMonth] = useState(() => toIsoMonthUTC(shiftUtcMonth(new Date(), -3)));
   const text = I18N[locale];
@@ -457,11 +565,14 @@ export default function EarthExperience() {
     let lastTick = performance.now();
 
     const tick = (now: number) => {
+      const elapsed = now - lastTick;
       const state = useViewerStore.getState();
-      if (state.isPlaying) {
-        state.advanceTime((now - lastTick) * state.playbackSpeed);
+      if (elapsed >= SIM_TICK_INTERVAL_MS) {
+        if (state.isPlaying) {
+          state.advanceTime(elapsed * state.playbackSpeed);
+        }
+        lastTick = now;
       }
-      lastTick = now;
       frameId = window.requestAnimationFrame(tick);
     };
 
@@ -474,7 +585,7 @@ export default function EarthExperience() {
     const localeText = I18N[locale];
     setSatelliteBusy(true);
 
-    fetch(`/api/satellites?category=${encodeURIComponent(satelliteCategory)}`)
+    fetch(`/api/satellites?category=${encodeURIComponent(satelliteCategory)}&locale=${encodeURIComponent(locale)}`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error('Unable to load satellite feed');
@@ -520,6 +631,233 @@ export default function EarthExperience() {
     };
   }, [locale, satelliteCategory]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setProviderBusy(true);
+
+    Promise.all([fetch('/api/providers'), fetch('/api/layers')])
+      .then(async ([providersResponse, layersResponse]) => {
+        if (!providersResponse.ok || !layersResponse.ok) {
+          throw new Error('Provider metadata unavailable');
+        }
+        const providersPayload = (await providersResponse.json()) as { providers: ProviderDescriptor[] };
+        const layersPayload = (await layersResponse.json()) as { layers: LayerDescriptor[] };
+        if (cancelled) {
+          return;
+        }
+        setProviders(providersPayload.providers);
+        setLayerCatalog(layersPayload.layers);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAgentNotice(error instanceof Error ? error.message : 'Provider metadata unavailable');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setProviderBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMoonEphemeris = async () => {
+      try {
+        const response = await fetch('/api/query', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            kind: 'moon_ephemeris'
+          })
+        });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as {
+          data?: {
+            distanceKm?: number;
+          };
+        };
+        if (!cancelled && typeof payload.data?.distanceKm === 'number') {
+          setMoonDistanceKm(payload.data.distanceKm);
+        }
+      } catch {
+        if (!cancelled) {
+          setMoonDistanceKm(null);
+        }
+      }
+    };
+
+    void loadMoonEphemeris();
+    const timer = window.setInterval(() => {
+      void loadMoonEphemeris();
+    }, 120000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedLocation) {
+      setLocationSnapshot(null);
+      setCityBrief('');
+      return;
+    }
+
+    let cancelled = false;
+    setLocationSnapshotBusy(true);
+    setCityBrief('');
+
+    Promise.all([
+      fetch('/api/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          kind: 'weather_current',
+          location: {
+            lat: selectedLocation.lat,
+            lon: selectedLocation.lon
+          }
+        })
+      }),
+      fetch('/api/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          kind: 'earthquakes_recent',
+          maxResults: 40
+        })
+      })
+    ])
+      .then(async ([weatherResponse, quakesResponse]) => {
+        if (!weatherResponse.ok || !quakesResponse.ok) {
+          throw new Error('City snapshot request failed');
+        }
+        const weatherPayload = (await weatherResponse.json()) as {
+          data?: {
+            current?: {
+              temperature_2m?: number;
+              relative_humidity_2m?: number;
+              wind_speed_10m?: number;
+            };
+          };
+        };
+        const quakesPayload = (await quakesResponse.json()) as {
+          data?: {
+            events?: EarthquakeEvent[];
+          };
+        };
+
+        const events = quakesPayload.data?.events ?? [];
+        let nearest: EarthquakeEvent | null = null;
+        let nearestDistance: number | null = null;
+
+        events.forEach((event) => {
+          if (event.coordinates.length < 2) {
+            return;
+          }
+          const distance = haversineKm(selectedLocation.lat, selectedLocation.lon, event.coordinates[1], event.coordinates[0]);
+          if (nearestDistance === null || distance < nearestDistance) {
+            nearest = event;
+            nearestDistance = distance;
+          }
+        });
+
+        if (!cancelled) {
+          setLocationSnapshot({
+            temperatureC: weatherPayload.data?.current?.temperature_2m ?? null,
+            humidityPct: weatherPayload.data?.current?.relative_humidity_2m ?? null,
+            windKmh: weatherPayload.data?.current?.wind_speed_10m ?? null,
+            nearestQuake: nearest,
+            nearestQuakeDistanceKm: nearestDistance
+          });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAgentNotice(error instanceof Error ? error.message : 'City snapshot unavailable');
+          setLocationSnapshot(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLocationSnapshotBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLocation]);
+
+  useEffect(() => {
+    if (!layers.earthquakes) {
+      setEarthquakeBusy(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadEarthquakes = async () => {
+      setEarthquakeBusy(true);
+      try {
+        const response = await fetch('/api/query', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            kind: 'earthquakes_recent',
+            maxResults: 24
+          })
+        });
+        if (!response.ok) {
+          throw new Error('Earthquake query failed');
+        }
+        const payload = (await response.json()) as {
+          data?: {
+            events?: EarthquakeEvent[];
+          };
+        };
+        if (!cancelled) {
+          setEarthquakeEvents(payload.data?.events ?? []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAgentNotice(error instanceof Error ? error.message : 'Earthquake feed unavailable');
+        }
+      } finally {
+        if (!cancelled) {
+          setEarthquakeBusy(false);
+        }
+      }
+    };
+
+    void loadEarthquakes();
+    const timer = window.setInterval(() => {
+      void loadEarthquakes();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [layers.earthquakes]);
+
   const satelliteRecords = useMemo(
     () =>
       satelliteFeed.map((item) => ({
@@ -541,14 +879,19 @@ export default function EarthExperience() {
     return getSolarPointInfo(selectedLocation.lat, selectedLocation.lon, earthState);
   }, [earthState, selectedLocation]);
   const yearPresets = useMemo(() => getSeasonPresets(currentDate.getUTCFullYear(), locale), [currentDate, locale]);
+  const satelliteTimeMs = useMemo(
+    () => Math.floor(currentTimeMs / SATELLITE_UPDATE_INTERVAL_MS) * SATELLITE_UPDATE_INTERVAL_MS,
+    [currentTimeMs]
+  );
+  const satelliteDate = useMemo(() => new Date(satelliteTimeMs), [satelliteTimeMs]);
   const satelliteSnapshots = useMemo<SatelliteSnapshot[]>(() => {
     return satelliteRecords
       .map((item) => {
-        const propagation = propagate(item.satrec, currentDate);
+        const propagation = propagate(item.satrec, satelliteDate);
         if (!propagation?.position) {
           return null;
         }
-        const gmst = gstime(currentDate);
+        const gmst = gstime(satelliteDate);
         const geodetic = eciToGeodetic(propagation.position, gmst);
         return {
           id: item.catnr,
@@ -560,7 +903,7 @@ export default function EarthExperience() {
         };
       })
       .filter((snapshot): snapshot is SatelliteSnapshot => Boolean(snapshot));
-  }, [currentDate, satelliteRecords]);
+  }, [satelliteDate, satelliteRecords]);
 
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) {
@@ -613,12 +956,16 @@ export default function EarthExperience() {
       viewer.scene.postProcessStages.fxaa.enabled = true;
       (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
       viewer.camera.setView({
-        destination: Cartesian3.fromDegrees(96, 18, 18_500_000)
+        destination: Cartesian3.fromDegrees(103, 22, 26_000_000),
+        orientation: {
+          heading: 0,
+          pitch: CesiumMath.toRadians(-88),
+          roll: 0
+        }
       });
 
       const initialState = useViewerStore.getState();
       const initialTimeMs = initialState.currentTimeMs;
-      const initialLocation = initialState.selectedLocation;
       const initialLayers = initialState.layers;
       const initialCloudDate = toIsoDateUTC(new Date(initialTimeMs));
       const initialTemperatureMonth = toIsoMonthUTC(new Date(initialTimeMs));
@@ -633,7 +980,11 @@ export default function EarthExperience() {
       const cityLayer = new CustomDataSource('anchor-cities');
       ANCHOR_CITIES.forEach((city) => {
         cityLayer.entities.add({
+          name: city.label,
           position: Cartesian3.fromDegrees(city.lon, city.lat),
+          properties: {
+            cityLabel: city.label
+          },
           point: {
             pixelSize: 6,
             color: Color.fromCssColorString('#f7b955'),
@@ -661,6 +1012,10 @@ export default function EarthExperience() {
       const satelliteLayer = new CustomDataSource('satellites');
       await viewer.dataSources.add(satelliteLayer);
 
+      const earthquakeLayer = new CustomDataSource('earthquakes');
+      earthquakeLayer.show = initialLayers.earthquakes;
+      await viewer.dataSources.add(earthquakeLayer);
+
       const cloudLayer = viewer.imageryLayers.addImageryProvider(createCloudProvider(initialCloudDate));
       cloudLayer.alpha = CLOUD_LAYER_ALPHA;
       cloudLayer.show = initialLayers.weatherClouds;
@@ -671,6 +1026,22 @@ export default function EarthExperience() {
 
       handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
       handler.setInputAction((movement: { position: Cartesian2 }) => {
+        const picked = viewer.scene.pick(movement.position) as { id?: { name?: string; position?: { getValue: (time: JulianDate) => Cartesian3 } } } | undefined;
+        if (picked?.id?.name && picked.id.position) {
+          const cityPosition = picked.id.position.getValue(viewer.clock.currentTime);
+          if (cityPosition) {
+            const cityCartographic = Cartographic.fromCartesian(cityPosition);
+            const cityLat = CesiumMath.toDegrees(cityCartographic.latitude);
+            const cityLon = CesiumMath.toDegrees(cityCartographic.longitude);
+            setSelectedLocation({
+              lat: cityLat,
+              lon: cityLon,
+              label: picked.id.name
+            });
+            return;
+          }
+        }
+
         const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid);
         if (!cartesian) {
           return;
@@ -728,12 +1099,10 @@ export default function EarthExperience() {
       cityLayerRef.current = cityLayer;
       annotationLayerRef.current = annotationLayer;
       satelliteLayerRef.current = satelliteLayer;
+      earthquakeLayerRef.current = earthquakeLayer;
       cloudLayerRef.current = cloudLayer;
       temperatureLayerRef.current = temperatureLayer;
       setController({ flyTo });
-      if (initialLocation) {
-        flyTo({ lat: initialLocation.lat, lon: initialLocation.lon });
-      }
     };
 
     init().catch((error) => {
@@ -750,6 +1119,7 @@ export default function EarthExperience() {
       cityLayerRef.current = null;
       annotationLayerRef.current = null;
       satelliteLayerRef.current = null;
+      earthquakeLayerRef.current = null;
       cloudLayerRef.current = null;
       temperatureLayerRef.current = null;
     };
@@ -776,6 +1146,9 @@ export default function EarthExperience() {
     }
     if (satelliteLayerRef.current) {
       satelliteLayerRef.current.show = layers.satellites;
+    }
+    if (earthquakeLayerRef.current) {
+      earthquakeLayerRef.current.show = layers.earthquakes;
     }
     if (cloudLayerRef.current) {
       cloudLayerRef.current.show = layers.weatherClouds;
@@ -877,6 +1250,47 @@ export default function EarthExperience() {
   }, [satelliteSnapshots]);
 
   useEffect(() => {
+    const earthquakeLayer = earthquakeLayerRef.current;
+    if (!earthquakeLayer) {
+      return;
+    }
+
+    earthquakeLayer.entities.removeAll();
+    earthquakeEvents.forEach((event) => {
+      if (event.coordinates.length < 2) {
+        return;
+      }
+
+      const lon = event.coordinates[0] ?? 0;
+      const lat = event.coordinates[1] ?? 0;
+      const magnitude = event.magnitude;
+      const label = magnitude !== null ? `M${magnitude.toFixed(1)}` : 'M?';
+      earthquakeLayer.entities.add({
+        position: Cartesian3.fromDegrees(lon, lat, 12_000),
+        point: {
+          pixelSize: magnitude !== null ? Math.max(6, Math.min(16, 5 + magnitude * 1.25)) : 7,
+          color: Color.fromCssColorString(earthquakeColor(magnitude)),
+          outlineColor: Color.fromCssColorString('#08101e'),
+          outlineWidth: 2
+        },
+        label: {
+          text: label,
+          font: '11px sans-serif',
+          fillColor: Color.fromCssColorString('#fff4d8'),
+          outlineColor: Color.fromCssColorString('#07111f'),
+          outlineWidth: 4,
+          style: LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: VerticalOrigin.BOTTOM,
+          horizontalOrigin: HorizontalOrigin.LEFT,
+          pixelOffset: new Cartesian2(10, -10)
+        }
+      });
+    });
+
+    viewerRef.current?.scene.requestRender();
+  }, [earthquakeEvents]);
+
+  useEffect(() => {
     const viewer = viewerRef.current;
     const localeText = I18N[locale];
     if (!viewer) {
@@ -928,7 +1342,7 @@ export default function EarthExperience() {
     setAgentBusy(true);
 
     try {
-      const response = await fetch('/api/agent', {
+      const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -947,6 +1361,8 @@ export default function EarthExperience() {
       const payload = (await response.json()) as AgentResponsePayload;
       applyClientActions(payload.actions);
       pushChatMessage({ role: 'assistant', content: payload.reply });
+      setAgentCitations(payload.citations ?? []);
+      setAgentArtifacts(payload.artifacts ?? []);
       setAgentNotice(payload.provider === 'openai' ? t('openaiReady') : t('fallbackMode'));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent request failed';
@@ -997,6 +1413,50 @@ export default function EarthExperience() {
 
   const toggleLayer = (layerId: ViewerLayerId) => {
     useViewerStore.getState().toggleLayer(layerId);
+  };
+
+  const handleGenerateCityBrief = async () => {
+    if (!selectedLocation) {
+      return;
+    }
+
+    setCityBriefBusy(true);
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: `Summarize current conditions for ${selectedLocation.label ?? 'selected location'} at ${selectedLocation.lat.toFixed(3)}, ${selectedLocation.lon.toFixed(3)}. Include weather, daylight context, and any nearby seismic relevance using available tools.`
+            }
+          ],
+          context: {
+            simulationTimeIso: currentDate.toISOString(),
+            inertialMode,
+            selectedLocation,
+            layers
+          }
+        })
+      });
+      if (!response.ok) {
+        throw new Error('City brief request failed');
+      }
+      const payload = (await response.json()) as AgentResponsePayload;
+      setCityBrief(payload.reply);
+      setAgentCitations(payload.citations ?? []);
+      setAgentArtifacts(payload.artifacts ?? []);
+      setAgentNotice(payload.provider === 'openai' ? t('openaiReady') : t('fallbackMode'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'City brief unavailable';
+      setCityBrief(message);
+      setAgentNotice(message);
+    } finally {
+      setCityBriefBusy(false);
+    }
   };
 
   return (
@@ -1164,6 +1624,10 @@ export default function EarthExperience() {
                 <span>{t('gmst')}</span>
                 <strong>{earthState.gmstDegrees.toFixed(2)}°</strong>
               </div>
+              <div>
+                <span>{t('moonDistance')}</span>
+                <strong>{moonDistanceKm ? `${Math.round(moonDistanceKm).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')} km` : '--'}</strong>
+              </div>
             </div>
           </article>
         </div>
@@ -1175,24 +1639,66 @@ export default function EarthExperience() {
               <strong>{selectedLocation ? t('locked') : t('none')}</strong>
             </div>
             {selectedLocation && solarInfo ? (
-              <div className="metricList">
-                <div>
-                  <span>{t('location')}</span>
-                  <strong>{selectedLocation.label ?? getLocationLabel(selectedLocation.lat, selectedLocation.lon)}</strong>
+              <>
+                <div className="metricList">
+                  <div>
+                    <span>{t('location')}</span>
+                    <strong>{selectedLocation.label ?? getLocationLabel(selectedLocation.lat, selectedLocation.lon)}</strong>
+                  </div>
+                  <div>
+                    <span>{t('solarAltitude')}</span>
+                    <strong>{solarInfo.altitudeDegrees.toFixed(1)}°</strong>
+                  </div>
+                  <div>
+                    <span>{t('localSolarTime')}</span>
+                    <strong>{formatLocalSolarTime(solarInfo.localSolarTimeHours)}</strong>
+                  </div>
+                  <div>
+                    <span>{t('daylightState')}</span>
+                    <strong>{solarInfo.daylight ? t('daytime') : t('nighttime')}</strong>
+                  </div>
+                  <div>
+                    <span>{t('weatherNow')}</span>
+                    <strong>{locationSnapshotBusy ? t('refreshing') : locationSnapshot?.temperatureC !== null && locationSnapshot?.temperatureC !== undefined ? `${locationSnapshot.temperatureC.toFixed(1)}°C` : '--'}</strong>
+                  </div>
+                  <div>
+                    <span>{t('humidity')}</span>
+                    <strong>{locationSnapshotBusy ? t('refreshing') : locationSnapshot?.humidityPct !== null && locationSnapshot?.humidityPct !== undefined ? `${Math.round(locationSnapshot.humidityPct)}%` : '--'}</strong>
+                  </div>
+                  <div>
+                    <span>{t('windSpeed')}</span>
+                    <strong>{locationSnapshotBusy ? t('refreshing') : locationSnapshot?.windKmh !== null && locationSnapshot?.windKmh !== undefined ? `${locationSnapshot.windKmh.toFixed(1)} km/h` : '--'}</strong>
+                  </div>
+                  <div>
+                    <span>{t('nearestQuake')}</span>
+                    <strong>
+                      {locationSnapshot?.nearestQuake
+                        ? `${locationSnapshot.nearestQuake.magnitude !== null ? `M${locationSnapshot.nearestQuake.magnitude.toFixed(1)}` : 'M?'} · ${locationSnapshot.nearestQuakeDistanceKm ? `${Math.round(locationSnapshot.nearestQuakeDistanceKm)} km` : '--'}`
+                        : t('unknown')}
+                    </strong>
+                  </div>
                 </div>
-                <div>
-                  <span>{t('solarAltitude')}</span>
-                  <strong>{solarInfo.altitudeDegrees.toFixed(1)}°</strong>
+                <div className="buttonRow compact twoCol">
+                  <button type="button" onClick={handleGenerateCityBrief} disabled={cityBriefBusy}>
+                    {cityBriefBusy ? t('generating') : t('generateBrief')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCityBrief('');
+                    }}
+                  >
+                    {t('clearResults')}
+                  </button>
                 </div>
-                <div>
-                  <span>{t('localSolarTime')}</span>
-                  <strong>{formatLocalSolarTime(solarInfo.localSolarTimeHours)}</strong>
+                <div className="chatLog">
+                  <p className="emptyState">{t('aiCityBrief')}</p>
+                  <div className="chatBubble assistant">
+                    <span>{t('agent')}</span>
+                    <p>{cityBrief || t('noCitySnapshot')}</p>
+                  </div>
                 </div>
-                <div>
-                  <span>{t('daylightState')}</span>
-                  <strong>{solarInfo.daylight ? t('daytime') : t('nighttime')}</strong>
-                </div>
-              </div>
+              </>
             ) : (
               <p className="emptyState">{t('clickEarthHint')}</p>
             )}
@@ -1242,6 +1748,40 @@ export default function EarthExperience() {
                 <p className="emptyState">{t('satelliteLoadingHint')}</p>
               )}
             </div>
+            {layers.earthquakes ? (
+              <>
+                <div className="panelHeader" style={{ marginTop: 12 }}>
+                  <span>{t('earthquakeEvents')}</span>
+                  <strong>{earthquakeBusy ? t('refreshing') : String(earthquakeEvents.length)}</strong>
+                </div>
+                <div className="satelliteList">
+                  {earthquakeEvents.length > 0 ? (
+                    earthquakeEvents.slice(0, 8).map((event) => {
+                      if (event.coordinates.length < 2) {
+                        return null;
+                      }
+                      const lon = event.coordinates[0] ?? 0;
+                      const lat = event.coordinates[1] ?? 0;
+                      return (
+                        <button
+                          key={event.id}
+                          type="button"
+                          className="resultItem satelliteItem"
+                          onClick={() => controller?.flyTo({ lat, lon, altitude: 5_200_000, pitch: -74 })}
+                        >
+                          <strong>
+                            {event.magnitude !== null ? `M${event.magnitude.toFixed(1)}` : 'M?'} · {event.place}
+                          </strong>
+                          <span>{event.timeIso ? formatIsoTime(new Date(event.timeIso), locale) : 'UTC unknown'}</span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="emptyState">{t('eventFeedEmpty')}</p>
+                  )}
+                </div>
+              </>
+            ) : null}
           </article>
         </div>
 
@@ -1301,6 +1841,45 @@ export default function EarthExperience() {
           </div>
         </article>
 
+        <div className="panelCluster twoUp">
+          <article className="infoPanel">
+            <div className="panelHeader">
+              <span>{t('dataProviders')}</span>
+              <strong>{providerBusy ? t('syncing') : t('availability')}</strong>
+            </div>
+            <div className="searchResults">
+              {providers.map((provider) => (
+                <div key={provider.id} className="resultItem">
+                  <strong>{provider.name}</strong>
+                  <span>
+                    {providerStatusLabel(provider.status, t)}
+                    {provider.optional ? ` · ${t('optionalProvider')}` : ''}
+                  </span>
+                  {provider.reason ? <span>{provider.reason}</span> : null}
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="infoPanel">
+            <div className="panelHeader">
+              <span>{t('layerCatalog')}</span>
+              <strong>{layerCatalog.length}</strong>
+            </div>
+            <div className="searchResults">
+              {layerCatalog.map((layer) => (
+                <div key={layer.id} className="resultItem">
+                  <strong>{layer.label}</strong>
+                  <span>{layer.description}</span>
+                  <span>
+                    {layer.providerId} · {layer.timeDimension}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
+        </div>
+
         <article className="infoPanel layerPanel">
           <div className="panelHeader">
             <span>{t('viewerLayers')}</span>
@@ -1313,6 +1892,7 @@ export default function EarthExperience() {
               ['cityMarkers', t('cityMarkers')],
               ['moon', t('moon')],
               ['satellites', t('satellites')],
+              ['earthquakes', t('earthquakes')],
               ['weatherClouds', t('weatherClouds')],
               ['weatherTemperature', t('weatherTemperature')]
             ] as Array<[ViewerLayerId, string]>).map(([layerId, label]) => (
@@ -1327,6 +1907,37 @@ export default function EarthExperience() {
               </button>
             ))}
           </div>
+        </article>
+
+        <article className="infoPanel">
+          <div className="panelHeader">
+            <span>{t('citations')}</span>
+            <strong>{agentCitations.length}</strong>
+          </div>
+          <div className="searchResults">
+            {agentCitations.length > 0 ? (
+              agentCitations.map((item, index) => (
+                <a key={`${item.providerId}-${index}`} className="resultItem citationItem" href={item.url} target="_blank" rel="noreferrer">
+                  <strong>{item.title}</strong>
+                  <span>{item.providerId}</span>
+                  <span>{new Date(item.retrievedAtIso).toISOString()}</span>
+                </a>
+              ))
+            ) : (
+              <p className="emptyState">{t('noCitations')}</p>
+            )}
+          </div>
+          {agentArtifacts.length > 0 ? (
+            <div className="chatLog">
+              <p className="emptyState">{t('analysisArtifacts')}</p>
+              {agentArtifacts.slice(0, 2).map((artifact, index) => (
+                <div key={`${artifact.kind}-${index}`} className="chatBubble assistant">
+                  <span>{artifact.title}</span>
+                  <p>{artifact.content}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </article>
 
         <article className="infoPanel commandPanel">

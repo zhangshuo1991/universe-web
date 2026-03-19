@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-import type { AgentMessage, ViewerLayerId } from '@/types/agent';
+import type { AgentMessage, InterfaceMode, SolarViewPresetId, ViewerLayerId } from '@/types/agent';
 
 export type SelectedLocation = {
   lat: number;
@@ -27,6 +27,8 @@ export type ViewerController = {
     pitch?: number;
     label?: string;
   }) => void;
+  focusBody?: (bodyId: string) => void;
+  setViewPreset?: (presetId: SolarViewPresetId) => void;
 };
 
 type ViewerStore = {
@@ -35,6 +37,9 @@ type ViewerStore = {
   playbackSpeed: number;
   inertialMode: boolean;
   selectedLocation: SelectedLocation | null;
+  selectedBodyId: string | null;
+  activePreset: SolarViewPresetId;
+  interfaceMode: InterfaceMode;
   annotations: Annotation[];
   layers: Record<ViewerLayerId, boolean>;
   controller: ViewerController | null;
@@ -44,6 +49,9 @@ type ViewerStore = {
   setPlayback: (playing: boolean, speed?: number) => void;
   setInertialMode: (enabled: boolean) => void;
   setSelectedLocation: (location: SelectedLocation | null) => void;
+  setSelectedBodyId: (bodyId: string | null) => void;
+  setActivePreset: (presetId: SolarViewPresetId) => void;
+  setInterfaceMode: (mode: InterfaceMode) => void;
   toggleLayer: (layerId: ViewerLayerId, visible?: boolean) => void;
   setController: (controller: ViewerController | null) => void;
   addAnnotation: (annotation: Annotation) => void;
@@ -64,6 +72,9 @@ export const useViewerStore = create<ViewerStore>((set) => ({
     lon: 121.4737,
     label: 'Shanghai'
   },
+  selectedBodyId: 'earth',
+  activePreset: 'inner',
+  interfaceMode: 'explore',
   annotations: [],
   layers: {
     dayNight: true,
@@ -71,8 +82,15 @@ export const useViewerStore = create<ViewerStore>((set) => ({
     cityMarkers: true,
     moon: true,
     satellites: true,
-    weatherClouds: false,
-    weatherTemperature: false
+    earthquakes: true,
+    weatherClouds: true,
+    weatherTemperature: true,
+    planetOrbits: true,
+    planetLabels: true,
+    majorMoons: true,
+    spaceWeather: true,
+    surfaceOverlays: true,
+    smallBodies: true
   },
   controller: null,
   chatHistory: [],
@@ -88,6 +106,9 @@ export const useViewerStore = create<ViewerStore>((set) => ({
     })),
   setInertialMode: (enabled) => set({ inertialMode: enabled }),
   setSelectedLocation: (location) => set({ selectedLocation: location }),
+  setSelectedBodyId: (bodyId) => set({ selectedBodyId: bodyId }),
+  setActivePreset: (presetId) => set({ activePreset: presetId }),
+  setInterfaceMode: (mode) => set({ interfaceMode: mode }),
   toggleLayer: (layerId, visible) =>
     set((state) => ({
       layers: {

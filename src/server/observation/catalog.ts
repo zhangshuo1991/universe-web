@@ -1,16 +1,14 @@
 import type { LayerDescriptor, ProviderDescriptor } from '@/types/observation';
+import { getProviderHealthMap } from '@/server/observation/providerHealth';
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function hasGoogleMapsKey() {
-  return Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
-}
-
-export function getProviderCatalog(): ProviderDescriptor[] {
+export async function getProviderCatalog(): Promise<ProviderDescriptor[]> {
   const checkedAt = nowIso();
-  const googleEnabled = hasGoogleMapsKey();
+  const health = await getProviderHealthMap();
+  const googleEnabled = health.googleMaps.status !== 'disabled';
 
   return [
     {
@@ -19,9 +17,10 @@ export function getProviderCatalog(): ProviderDescriptor[] {
       category: 'imagery',
       enabled: true,
       optional: false,
-      status: 'available',
+      status: health.nasaGibs.status,
+      reason: health.nasaGibs.reason,
       docsUrl: 'https://earthdata.nasa.gov/gibs',
-      lastCheckedIso: checkedAt
+      lastCheckedIso: health.nasaGibs.checkedAtIso ?? checkedAt
     },
     {
       id: 'celestrak',
@@ -29,9 +28,10 @@ export function getProviderCatalog(): ProviderDescriptor[] {
       category: 'satellite',
       enabled: true,
       optional: false,
-      status: 'available',
+      status: health.celestrak.status,
+      reason: health.celestrak.reason,
       docsUrl: 'https://celestrak.org',
-      lastCheckedIso: checkedAt
+      lastCheckedIso: health.celestrak.checkedAtIso ?? checkedAt
     },
     {
       id: 'openMeteo',
@@ -39,9 +39,10 @@ export function getProviderCatalog(): ProviderDescriptor[] {
       category: 'weather',
       enabled: true,
       optional: false,
-      status: 'available',
+      status: health.openMeteo.status,
+      reason: health.openMeteo.reason,
       docsUrl: 'https://open-meteo.com',
-      lastCheckedIso: checkedAt
+      lastCheckedIso: health.openMeteo.checkedAtIso ?? checkedAt
     },
     {
       id: 'usgs',
@@ -49,9 +50,76 @@ export function getProviderCatalog(): ProviderDescriptor[] {
       category: 'events',
       enabled: true,
       optional: false,
-      status: 'available',
+      status: health.usgs.status,
+      reason: health.usgs.reason,
       docsUrl: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php',
-      lastCheckedIso: checkedAt
+      lastCheckedIso: health.usgs.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'jplHorizons',
+      name: 'JPL Horizons',
+      category: 'ephemeris',
+      enabled: true,
+      optional: false,
+      status: health.jplHorizons.status,
+      reason: health.jplHorizons.reason,
+      docsUrl: 'https://ssd-api.jpl.nasa.gov/doc/horizons.html',
+      lastCheckedIso: health.jplHorizons.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'jplCneos',
+      name: 'JPL CNEOS',
+      category: 'events',
+      enabled: true,
+      optional: false,
+      status: health.jplCneos.status,
+      reason: health.jplCneos.reason,
+      docsUrl: 'https://ssd-api.jpl.nasa.gov/',
+      lastCheckedIso: health.jplCneos.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'naifSpice',
+      name: 'NAIF SPICE',
+      category: 'ephemeris',
+      enabled: health.naifSpice.status === 'available',
+      optional: true,
+      status: health.naifSpice.status,
+      reason: health.naifSpice.reason,
+      docsUrl: 'https://naif.jpl.nasa.gov/naif/',
+      lastCheckedIso: health.naifSpice.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'nasaPds',
+      name: 'NASA PDS',
+      category: 'catalog',
+      enabled: true,
+      optional: false,
+      status: health.nasaPds.status,
+      reason: health.nasaPds.reason,
+      docsUrl: 'https://nasa-pds.github.io/pds-api/',
+      lastCheckedIso: health.nasaPds.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'nasaTreks',
+      name: 'NASA Solar System Treks',
+      category: 'imagery',
+      enabled: true,
+      optional: false,
+      status: health.nasaTreks.status,
+      reason: health.nasaTreks.reason,
+      docsUrl: 'https://trek.nasa.gov/',
+      lastCheckedIso: health.nasaTreks.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'noaaSwpc',
+      name: 'NOAA SWPC',
+      category: 'space_weather',
+      enabled: true,
+      optional: false,
+      status: health.noaaSwpc.status,
+      reason: health.noaaSwpc.reason,
+      docsUrl: 'https://www.swpc.noaa.gov/content/data-access',
+      lastCheckedIso: health.noaaSwpc.checkedAtIso ?? checkedAt
     },
     {
       id: 'googleMaps',
@@ -59,10 +127,10 @@ export function getProviderCatalog(): ProviderDescriptor[] {
       category: 'maps',
       enabled: googleEnabled,
       optional: true,
-      status: googleEnabled ? 'available' : 'disabled',
-      reason: googleEnabled ? undefined : 'Set GOOGLE_MAPS_API_KEY to enable this optional provider.',
+      status: health.googleMaps.status,
+      reason: health.googleMaps.reason,
       docsUrl: 'https://developers.google.com/maps',
-      lastCheckedIso: checkedAt
+      lastCheckedIso: health.googleMaps.checkedAtIso ?? checkedAt
     }
   ];
 }
@@ -102,6 +170,14 @@ export function getLayerCatalog(): LayerDescriptor[] {
       description: 'Near real-time propagated satellite positions from CelesTrak TLE/GP data.'
     },
     {
+      id: 'moon_ephemeris',
+      label: 'Moon Ephemeris',
+      providerId: 'jplHorizons',
+      defaultVisible: true,
+      timeDimension: 'datetime',
+      description: 'Moon geocentric ephemeris backed by JPL Horizons with model fallback.'
+    },
+    {
       id: 'earthquake_events',
       label: 'Earthquake Events',
       providerId: 'usgs',
@@ -116,6 +192,46 @@ export function getLayerCatalog(): LayerDescriptor[] {
       defaultVisible: false,
       timeDimension: 'none',
       description: 'Optional enhanced map provider, enabled only when Google API key is configured.'
+    },
+    {
+      id: 'solar_system_orbits',
+      label: 'Solar System Orbits',
+      providerId: 'jplHorizons',
+      defaultVisible: true,
+      timeDimension: 'datetime',
+      description: 'Planetary positions sourced from JPL Horizons and rendered against analytic orbital tracks.'
+    },
+    {
+      id: 'solar_system_major_moons',
+      label: 'Major Moons',
+      providerId: 'jplHorizons',
+      defaultVisible: true,
+      timeDimension: 'datetime',
+      description: 'Moon, Galilean satellites, and Titan rendered from live or cached ephemerides.'
+    },
+    {
+      id: 'space_weather_now',
+      label: 'Space Weather',
+      providerId: 'noaaSwpc',
+      defaultVisible: true,
+      timeDimension: 'datetime',
+      description: 'Current geomagnetic and solar activity from NOAA SWPC feeds.'
+    },
+    {
+      id: 'small_body_events',
+      label: 'Small Body Events',
+      providerId: 'jplCneos',
+      defaultVisible: true,
+      timeDimension: 'datetime',
+      description: 'Near-Earth close approaches and fireball events from JPL CNEOS APIs.'
+    },
+    {
+      id: 'surface_reference_layers',
+      label: 'Surface Reference Layers',
+      providerId: 'nasaTreks',
+      defaultVisible: true,
+      timeDimension: 'none',
+      description: 'Links to scientific and visual body maps from NASA Treks, PDS, and JPL texture catalogs.'
     }
   ];
 }

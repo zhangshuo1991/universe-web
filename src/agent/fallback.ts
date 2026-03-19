@@ -14,6 +14,24 @@ export function runFallbackAgent(message: string, context: AgentContext): AgentR
   const actions: AgentResponsePayload['actions'] = [];
   const notes: string[] = [];
 
+  const bodyAliases = [
+    ['sun', ['sun', '太阳']],
+    ['mercury', ['mercury', '水星']],
+    ['venus', ['venus', '金星']],
+    ['earth', ['earth', '地球']],
+    ['moon', ['moon', '月球', '月亮']],
+    ['mars', ['mars', '火星']],
+    ['jupiter', ['jupiter', '木星']],
+    ['saturn', ['saturn', '土星']],
+    ['uranus', ['uranus', '天王星']],
+    ['neptune', ['neptune', '海王星']],
+    ['io', ['io']],
+    ['europa', ['europa']],
+    ['ganymede', ['ganymede']],
+    ['callisto', ['callisto']],
+    ['titan', ['titan']]
+  ] as const;
+
   if (normalized.includes('暂停')) {
     actions.push({ type: 'pause_time', payload: {} });
     notes.push('已暂停时间流。');
@@ -33,6 +51,37 @@ export function runFallbackAgent(message: string, context: AgentContext): AgentR
     const enabled = !includesAny(normalized, ['关闭惯性', '退出惯性', '回到地固', 'earth-fixed', '地固']);
     actions.push({ type: 'set_inertial_mode', payload: { enabled } });
     notes.push(enabled ? '已切到惯性参考系。' : '已回到地固参考系。');
+  }
+
+  if (includesAny(normalized, ['analysis', '分析模式', 'analysis mode'])) {
+    actions.push({ type: 'set_interface_mode', payload: { mode: 'analysis' } });
+    notes.push('已切到分析模式。');
+  }
+
+  if (includesAny(normalized, ['explore', '探索模式', 'explore mode'])) {
+    actions.push({ type: 'set_interface_mode', payload: { mode: 'explore' } });
+    notes.push('已切到探索模式。');
+  }
+
+  const presetIntents = [
+    ['earthMoon', ['earth-moon', 'earth moon', '地月']],
+    ['inner', ['inner', 'inner system', '内太阳系']],
+    ['outer', ['outer', 'outer system', '外太阳系']],
+    ['full', ['full', 'full system', '全太阳系']]
+  ] as const;
+
+  presetIntents.forEach(([presetId, aliases]) => {
+    if (!includesAny(normalized, aliases)) {
+      return;
+    }
+    actions.push({ type: 'set_view_preset', payload: { presetId } });
+    notes.push(`已切换到 ${presetId} 视图。`);
+  });
+
+  const focusedBody = bodyAliases.find(([, aliases]) => includesAny(normalized, aliases));
+  if (focusedBody) {
+    actions.push({ type: 'focus_body', payload: { bodyId: focusedBody[0] } });
+    notes.push(`已聚焦 ${focusedBody[0]}。`);
   }
 
   const layerIntents = [
@@ -67,6 +116,12 @@ export function runFallbackAgent(message: string, context: AgentContext): AgentR
       off: ['关闭卫星', '隐藏卫星']
     },
     {
+      layerId: 'earthquakes',
+      label: '地震事件',
+      on: ['地震', '地震事件', 'earthquake'],
+      off: ['关闭地震', '隐藏地震', '关闭地震事件', '隐藏地震事件']
+    },
+    {
       layerId: 'weatherClouds',
       label: '云量层',
       on: ['云层', '云量', '云图', 'cloud'],
@@ -77,6 +132,42 @@ export function runFallbackAgent(message: string, context: AgentContext): AgentR
       label: '气温层',
       on: ['气温', '温度', 'temperature'],
       off: ['关闭气温', '隐藏气温', '关闭温度', '隐藏温度']
+    },
+    {
+      layerId: 'planetOrbits',
+      label: '行星轨道',
+      on: ['轨道', 'orbits'],
+      off: ['关闭轨道', '隐藏轨道', 'hide orbits']
+    },
+    {
+      layerId: 'planetLabels',
+      label: '行星标签',
+      on: ['标签', 'labels'],
+      off: ['关闭标签', '隐藏标签', 'hide labels']
+    },
+    {
+      layerId: 'majorMoons',
+      label: '主要卫星',
+      on: ['主要卫星', 'major moons'],
+      off: ['关闭主要卫星', '隐藏主要卫星', 'hide major moons']
+    },
+    {
+      layerId: 'spaceWeather',
+      label: '空间天气',
+      on: ['空间天气', 'space weather'],
+      off: ['关闭空间天气', '隐藏空间天气', 'hide space weather']
+    },
+    {
+      layerId: 'surfaceOverlays',
+      label: '表面参考层',
+      on: ['表面图层', 'surface layers'],
+      off: ['关闭表面图层', '隐藏表面图层', 'hide surface layers']
+    },
+    {
+      layerId: 'smallBodies',
+      label: '小天体事件层',
+      on: ['小天体', 'asteroid', 'neo', 'fireball'],
+      off: ['关闭小天体', '隐藏小天体', 'hide small bodies']
     }
   ] as const;
 
@@ -121,7 +212,7 @@ export function runFallbackAgent(message: string, context: AgentContext): AgentR
 
   if (actions.length === 0) {
     notes.push('Agent API 骨架已经接通，但当前未配置 `OPENAI_API_KEY`，所以这里只启用了有限的本地 fallback 指令。');
-    notes.push('你可以试试：`暂停时间`、`播放 86400x`、`打开月球和卫星图层`、`切到惯性系`、`给当前点加标注`。');
+    notes.push('你可以试试：`聚焦火星`、`切到分析模式`、`显示内太阳系`、`打开轨道图层`、`播放 86400x`。');
   }
 
   return {

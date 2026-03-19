@@ -14,13 +14,13 @@ const displayFont = Oxanium({
 });
 
 export const metadata: Metadata = {
-  title: 'Universe Web | Earth Observer',
-  description: 'Deterministic Earth observation cockpit with real-time spin, orbit, and LLM control hooks.'
+  title: 'Universe Web | Solar System Observer',
+  description: 'Real ephemeris Solar System observatory with dual-mode exploration, analysis, and LLM control hooks.'
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>{children}</body>
     </html>
   );

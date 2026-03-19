@@ -35,6 +35,17 @@ export function applyClientActions(actions: AgentAction[]) {
       case 'set_inertial_mode':
         state.setInertialMode(action.payload.enabled);
         break;
+      case 'focus_body':
+        state.setSelectedBodyId(action.payload.bodyId);
+        state.controller?.focusBody?.(action.payload.bodyId);
+        break;
+      case 'set_view_preset':
+        state.setActivePreset(action.payload.presetId);
+        state.controller?.setViewPreset?.(action.payload.presetId);
+        break;
+      case 'set_interface_mode':
+        state.setInterfaceMode(action.payload.mode);
+        break;
       case 'toggle_layer':
         state.toggleLayer(action.payload.layerId, action.payload.visible);
         break;
