@@ -35,9 +35,22 @@ type SpaceWeatherData = {
 
 type SmallBodyEvent = {
   designation: unknown;
+  closeApproachTimeIso?: unknown;
   closeApproachTimeUtc: unknown;
   missDistanceAu: unknown;
   relativeVelocityKmS: unknown;
+  vectorSource?: unknown;
+  vectorEpochIso?: unknown;
+  vectorKm?: {
+    x: unknown;
+    y: unknown;
+    z: unknown;
+  } | null;
+  velocityKmS?: {
+    x: unknown;
+    y: unknown;
+    z: unknown;
+  } | null;
 };
 
 type SmallBodyEventsResponse = {
@@ -178,7 +191,7 @@ const I18N = {
     moonModeHint: 'Earth-Moon mode is rendered in kilometer-scale relative geometry.',
     commandConsole: 'LLM Console',
     smallBodyEvents: 'Small Body Events',
-    smallBodyHint: 'Event markers are proxy positions around Earth when full orbital vectors are unavailable.',
+    smallBodyHint: 'Markers use SBDB+Kepler physical vectors when available, otherwise fallback proxy placement.',
     smallBodyWindow: 'Window',
     noSmallBodies: 'No close approaches in current feed window.',
     missDistance: 'Miss Distance',
@@ -188,7 +201,10 @@ const I18N = {
     autoAnalyzing: 'Auto analyzing...',
     filter24h: '24H',
     filter7d: '7D',
-    filter30d: '30D'
+    filter30d: '30D',
+    modelSource: 'Model Source',
+    modelPhysical: 'SBDB + Kepler',
+    modelProxy: 'Proxy'
   },
   zh: {
     eyebrow: '太阳系观测站',
@@ -253,7 +269,7 @@ const I18N = {
     moonModeHint: '地月视图按地月相对公里尺度渲染。',
     commandConsole: 'LLM 控制台',
     smallBodyEvents: '小天体事件',
-    smallBodyHint: '当前在缺少完整轨道矢量时，小天体仅按事件代理点围绕地球展示。',
+    smallBodyHint: '优先使用 SBDB+开普勒真实矢量，缺失时才降级为代理点展示。',
     smallBodyWindow: '时间窗口',
     noSmallBodies: '当前窗口未发现近地接近事件。',
     missDistance: '掠过距离',
@@ -263,7 +279,10 @@ const I18N = {
     autoAnalyzing: '自动分析中...',
     filter24h: '24小时',
     filter7d: '7天',
-    filter30d: '30天'
+    filter30d: '30天',
+    modelSource: '轨道模型',
+    modelPhysical: 'SBDB + 开普勒',
+    modelProxy: '代理'
   }
 } as const;
 
@@ -384,22 +403,70 @@ function buildActiveBodyIds(preset: SolarViewPresetId, selectedBodyId: string | 
   return [...set];
 }
 
-function formatEventTime(value: unknown, locale: Locale) {
-  if (typeof value !== 'string' || !value) {
-    return '—';
-  }
-  const date = new Date(value.replace(' ', 'T'));
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return date.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US');
-}
-
-function eventTimeMs(value: unknown) {
-  if (typeof value !== 'string' || !value) {
+function normalizeCneosTextToIso(value: unknown) {
+  if (typeof value !== 'string') {
     return null;
   }
-  const date = new Date(value.replace(' ', 'T'));
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const direct = Date.parse(trimmed);
+  if (Number.isFinite(direct)) {
+    return new Date(direct).toISOString();
+  }
+
+  const match = trimmed.match(/^(\d{4})-([A-Za-z]{3})-(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const monthMap: Record<string, string> = {
+    jan: '01',
+    feb: '02',
+    mar: '03',
+    apr: '04',
+    may: '05',
+    jun: '06',
+    jul: '07',
+    aug: '08',
+    sep: '09',
+    oct: '10',
+    nov: '11',
+    dec: '12'
+  };
+  const [, year, monthToken, day, hour, minute] = match;
+  const month = monthMap[monthToken.toLowerCase()];
+  if (!month) {
+    return null;
+  }
+  return `${year}-${month}-${day}T${hour}:${minute}:00.000Z`;
+}
+
+function eventIso(event: SmallBodyEvent) {
+  if (typeof event.closeApproachTimeIso === 'string' && event.closeApproachTimeIso) {
+    return event.closeApproachTimeIso;
+  }
+  return normalizeCneosTextToIso(event.closeApproachTimeUtc);
+}
+
+function formatEventTime(event: SmallBodyEvent, locale: Locale) {
+  const iso = eventIso(event);
+  if (!iso) {
+    return '—';
+  }
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) {
+    return String(event.closeApproachTimeUtc ?? '—');
+  }
+  return new Date(time).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US');
+}
+
+function eventTimeMs(event: SmallBodyEvent) {
+  const iso = eventIso(event);
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return null;
   }
@@ -696,7 +763,7 @@ export default function SolarSystemExperience() {
           : 30 * 24 * 60 * 60 * 1000;
 
     return smallBodyEvents.filter((event) => {
-      const timeMs = eventTimeMs(event.closeApproachTimeUtc);
+      const timeMs = eventTimeMs(event);
       if (timeMs === null) {
         return false;
       }
@@ -984,6 +1051,7 @@ export default function SolarSystemExperience() {
               layers={layers}
               smallBodyEvents={renderedSmallBodyEvents}
               selectedSmallBodyIndex={selectedSmallBodyIndex}
+              simulationTimeMs={currentTimeMs}
               onSelectBody={setSelectedBodyId}
               onSelectSmallBody={(eventIndex) => {
                 selectSmallBodyEvent(eventIndex).catch(() => undefined);
@@ -1139,7 +1207,7 @@ export default function SolarSystemExperience() {
                     {commandBusy && selectedSmallBodyIndex === index ? <small>{dict.autoAnalyzing}</small> : null}
                     <div className="smallBodyMeta">
                       <span>{dict.closeApproach}</span>
-                      <strong>{formatEventTime(event.closeApproachTimeUtc, locale)}</strong>
+                      <strong>{formatEventTime(event, locale)}</strong>
                     </div>
                     <div className="smallBodyMeta">
                       <span>{dict.missDistance}</span>
@@ -1148,6 +1216,10 @@ export default function SolarSystemExperience() {
                     <div className="smallBodyMeta">
                       <span>{dict.relVelocity}</span>
                       <strong>{Number.isFinite(relVelocityValue) ? `${number(relVelocityValue, 2)} km/s` : '—'}</strong>
+                    </div>
+                    <div className="smallBodyMeta">
+                      <span>{dict.modelSource}</span>
+                      <strong>{event.vectorSource === 'sbdb_kepler' ? dict.modelPhysical : dict.modelProxy}</strong>
                     </div>
                   </article>
                 );

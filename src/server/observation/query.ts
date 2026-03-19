@@ -98,6 +98,22 @@ const cneosFireballSchema = z.object({
   data: z.array(z.array(z.union([z.string(), z.number(), z.null()])))
 });
 
+const sbdbResponseSchema = z.object({
+  orbit: z
+    .object({
+      epoch: z.union([z.string(), z.number()]).optional(),
+      elements: z
+        .array(
+          z.object({
+            name: z.string(),
+            value: z.union([z.string(), z.number()]).optional()
+          })
+        )
+        .optional()
+    })
+    .optional()
+});
+
 export type ObservationQueryParsed = z.infer<typeof requestSchema>;
 
 export function parseObservationQueryRequest(payload: unknown): ObservationQueryParsed {
@@ -493,6 +509,258 @@ function dedupeCitations(items: Array<ObservationQueryResponse['citations'][numb
   });
 }
 
+const AU_IN_KM = 149_597_870.7;
+const EARTH_OBLIQUITY_RAD = (23.4392911 * Math.PI) / 180;
+
+type SbdbOrbitElements = {
+  epochJd: number;
+  e: number;
+  a: number;
+  iDeg: number;
+  omDeg: number;
+  wDeg: number;
+  maDeg: number;
+  nDegPerDay: number;
+};
+
+type SmallBodyApproachEvent = {
+  designation: unknown;
+  closeApproachTimeUtc: unknown;
+  missDistanceAu: unknown;
+  relativeVelocityKmS: unknown;
+  objectDiameterKm: {
+    min: unknown;
+    max: unknown;
+  };
+  orbitUncertainty: unknown;
+};
+
+function asNumber(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeCneosDate(value: unknown) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const direct = Date.parse(trimmed);
+  if (Number.isFinite(direct)) {
+    return new Date(direct).toISOString();
+  }
+
+  const match = trimmed.match(/^(\d{4})-([A-Za-z]{3})-(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const monthMap: Record<string, string> = {
+    jan: '01',
+    feb: '02',
+    mar: '03',
+    apr: '04',
+    may: '05',
+    jun: '06',
+    jul: '07',
+    aug: '08',
+    sep: '09',
+    oct: '10',
+    nov: '11',
+    dec: '12'
+  };
+  const [, year, monthToken, day, hour, minute] = match;
+  const month = monthMap[monthToken.toLowerCase()];
+  if (!month) {
+    return null;
+  }
+  return `${year}-${month}-${day}T${hour}:${minute}:00.000Z`;
+}
+
+function jdFromIso(iso: string) {
+  return Date.parse(iso) / 86400000 + 2440587.5;
+}
+
+function normalizeRadians(value: number) {
+  const tau = Math.PI * 2;
+  const normalized = value % tau;
+  return normalized >= 0 ? normalized : normalized + tau;
+}
+
+function solveEccentricAnomaly(meanAnomalyRad: number, eccentricity: number) {
+  let estimate = meanAnomalyRad;
+  for (let i = 0; i < 12; i += 1) {
+    const delta =
+      (estimate - eccentricity * Math.sin(estimate) - meanAnomalyRad) / (1 - eccentricity * Math.cos(estimate));
+    estimate -= delta;
+    if (Math.abs(delta) < 1e-10) {
+      break;
+    }
+  }
+  return estimate;
+}
+
+function heliocentricEquatorialPositionAu(elements: SbdbOrbitElements, targetJd: number) {
+  const dtDays = targetJd - elements.epochJd;
+  const meanAnomalyRad = normalizeRadians(((elements.maDeg + elements.nDegPerDay * dtDays) * Math.PI) / 180);
+  const eccentricAnomaly = solveEccentricAnomaly(meanAnomalyRad, elements.e);
+  const trueAnomaly = 2 * Math.atan2(
+    Math.sqrt(1 + elements.e) * Math.sin(eccentricAnomaly / 2),
+    Math.sqrt(1 - elements.e) * Math.cos(eccentricAnomaly / 2)
+  );
+  const radiusAu = elements.a * (1 - elements.e * Math.cos(eccentricAnomaly));
+  const inclination = (elements.iDeg * Math.PI) / 180;
+  const ascNode = (elements.omDeg * Math.PI) / 180;
+  const argPeri = (elements.wDeg * Math.PI) / 180;
+  const argLat = argPeri + trueAnomaly;
+
+  const xEcl = radiusAu * (Math.cos(ascNode) * Math.cos(argLat) - Math.sin(ascNode) * Math.sin(argLat) * Math.cos(inclination));
+  const yEcl = radiusAu * (Math.sin(ascNode) * Math.cos(argLat) + Math.cos(ascNode) * Math.sin(argLat) * Math.cos(inclination));
+  const zEcl = radiusAu * Math.sin(argLat) * Math.sin(inclination);
+
+  // Rotate ecliptic J2000 to equatorial J2000 for compatibility with ICRF-like vectors.
+  const x = xEcl;
+  const y = yEcl * Math.cos(EARTH_OBLIQUITY_RAD) - zEcl * Math.sin(EARTH_OBLIQUITY_RAD);
+  const z = yEcl * Math.sin(EARTH_OBLIQUITY_RAD) + zEcl * Math.cos(EARTH_OBLIQUITY_RAD);
+
+  return { x, y, z };
+}
+
+function heliocentricEquatorialVelocityKmS(elements: SbdbOrbitElements, targetJd: number) {
+  const delta = 1 / 1440; // 1 minute
+  const before = heliocentricEquatorialPositionAu(elements, targetJd - delta);
+  const after = heliocentricEquatorialPositionAu(elements, targetJd + delta);
+  const seconds = delta * 2 * 86400;
+  return {
+    x: ((after.x - before.x) * AU_IN_KM) / seconds,
+    y: ((after.y - before.y) * AU_IN_KM) / seconds,
+    z: ((after.z - before.z) * AU_IN_KM) / seconds
+  };
+}
+
+function parseSbdbOrbitElements(payload: unknown): SbdbOrbitElements | null {
+  const parsed = sbdbResponseSchema.parse(payload);
+  const epochJd = asNumber(parsed.orbit?.epoch);
+  if (!epochJd || !parsed.orbit?.elements?.length) {
+    return null;
+  }
+
+  const byName = new Map(parsed.orbit.elements.map((item) => [item.name, asNumber(item.value)]));
+  const e = byName.get('e');
+  const a = byName.get('a');
+  const iDeg = byName.get('i');
+  const omDeg = byName.get('om');
+  const wDeg = byName.get('w');
+  const maDeg = byName.get('ma');
+  const nDegPerDay = byName.get('n');
+
+  if (
+    e === null ||
+    e === undefined ||
+    a === null ||
+    a === undefined ||
+    iDeg === null ||
+    iDeg === undefined ||
+    omDeg === null ||
+    omDeg === undefined ||
+    wDeg === null ||
+    wDeg === undefined ||
+    maDeg === null ||
+    maDeg === undefined ||
+    nDegPerDay === null ||
+    nDegPerDay === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    epochJd,
+    e,
+    a,
+    iDeg,
+    omDeg,
+    wDeg,
+    maDeg,
+    nDegPerDay
+  };
+}
+
+async function fetchSbdbOrbitElements(designation: string): Promise<SbdbOrbitElements | null> {
+  const url = new URL('https://ssd-api.jpl.nasa.gov/sbdb.api');
+  url.searchParams.set('sstr', designation);
+  url.searchParams.set('full-prec', 'true');
+
+  try {
+    const response = await fetch(url, { next: { revalidate: 6 * 60 * 60 }, signal: AbortSignal.timeout(4500) });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json();
+    return parseSbdbOrbitElements(payload);
+  } catch {
+    return null;
+  }
+}
+
+async function augmentSmallBodyApproach(event: SmallBodyApproachEvent) {
+  const closeApproachTimeIso = normalizeCneosDate(event.closeApproachTimeUtc);
+  const designation = typeof event.designation === 'string' ? event.designation : null;
+  if (!closeApproachTimeIso || !designation) {
+    return {
+      ...event,
+      closeApproachTimeIso: closeApproachTimeIso ?? null,
+      vectorSource: 'proxy'
+    };
+  }
+
+  const elements = await fetchSbdbOrbitElements(designation);
+  if (!elements) {
+    return {
+      ...event,
+      closeApproachTimeIso,
+      vectorSource: 'proxy'
+    };
+  }
+
+  try {
+    const jd = jdFromIso(closeApproachTimeIso);
+    const smallBodyHelioAu = heliocentricEquatorialPositionAu(elements, jd);
+    const smallBodyHelioKm = {
+      x: smallBodyHelioAu.x * AU_IN_KM,
+      y: smallBodyHelioAu.y * AU_IN_KM,
+      z: smallBodyHelioAu.z * AU_IN_KM
+    };
+    const smallBodyVelocityKmS = heliocentricEquatorialVelocityKmS(elements, jd);
+    const earthState = await getBodyState('earth', closeApproachTimeIso);
+
+    return {
+      ...event,
+      closeApproachTimeIso,
+      vectorSource: 'sbdb_kepler',
+      vectorEpochIso: closeApproachTimeIso,
+      vectorKm: {
+        x: smallBodyHelioKm.x - earthState.positionKm.x,
+        y: smallBodyHelioKm.y - earthState.positionKm.y,
+        z: smallBodyHelioKm.z - earthState.positionKm.z
+      },
+      velocityKmS: {
+        x: smallBodyVelocityKmS.x - earthState.velocityKmS.x,
+        y: smallBodyVelocityKmS.y - earthState.velocityKmS.y,
+        z: smallBodyVelocityKmS.z - earthState.velocityKmS.z
+      }
+    };
+  } catch {
+    return {
+      ...event,
+      closeApproachTimeIso,
+      vectorSource: 'proxy'
+    };
+  }
+}
+
 async function querySmallBodyEvents(maxResults: number): Promise<ObservationQueryResponse> {
   const start = new Date();
   const stop = new Date(start.getTime() + 45 * 24 * 60 * 60 * 1000);
@@ -522,7 +790,7 @@ async function querySmallBodyEvents(maxResults: number): Promise<ObservationQuer
   const fireballPayload = cneosFireballSchema.parse(await fireballResponse.json());
 
   const cadFieldIndex = new Map(cadPayload.fields.map((field, index) => [field, index]));
-  const closeApproaches = cadPayload.data.slice(0, maxResults).map((row) => {
+  const closeApproachesRaw = cadPayload.data.slice(0, maxResults).map((row) => {
     const value = (field: string) => row[cadFieldIndex.get(field) ?? -1] ?? null;
     return {
       designation: value('des') ?? value('fullname'),
@@ -536,6 +804,7 @@ async function querySmallBodyEvents(maxResults: number): Promise<ObservationQuer
       orbitUncertainty: value('orbit_id')
     };
   });
+  const closeApproaches = await Promise.all(closeApproachesRaw.map((event) => augmentSmallBodyApproach(event)));
 
   const fireballFieldIndex = new Map(fireballPayload.fields.map((field, index) => [field, index]));
   const fireballs = fireballPayload.data.slice(0, maxResults).map((row) => {
@@ -564,7 +833,9 @@ async function querySmallBodyEvents(maxResults: number): Promise<ObservationQuer
     },
     citations: [
       citation('jplCneos', 'JPL CAD API', 'https://ssd-api.jpl.nasa.gov/doc/cad.html'),
-      citation('jplCneos', 'JPL Fireball API', 'https://ssd-api.jpl.nasa.gov/doc/fireball.html')
+      citation('jplCneos', 'JPL Fireball API', 'https://ssd-api.jpl.nasa.gov/doc/fireball.html'),
+      citation('jplCneos', 'JPL SBDB API', 'https://ssd-api.jpl.nasa.gov/doc/sbdb.html'),
+      citation('naifSpice', 'Two-body Kepler propagation (SBDB elements)', 'https://naif.jpl.nasa.gov/naif/')
     ]
   };
 }

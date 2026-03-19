@@ -20,9 +20,22 @@ import type { BodyStateVector, CelestialBodyDescriptor } from '@/types/observati
 
 type SmallBodyEvent = {
   designation: unknown;
+  closeApproachTimeIso?: unknown;
   closeApproachTimeUtc: unknown;
   missDistanceAu: unknown;
   relativeVelocityKmS: unknown;
+  vectorSource?: unknown;
+  vectorEpochIso?: unknown;
+  vectorKm?: {
+    x: unknown;
+    y: unknown;
+    z: unknown;
+  } | null;
+  velocityKmS?: {
+    x: unknown;
+    y: unknown;
+    z: unknown;
+  } | null;
 };
 
 type SolarBodyRender = BodyStateVector & {
@@ -37,6 +50,7 @@ type Props = {
   layers: Record<ViewerLayerId, boolean>;
   smallBodyEvents: SmallBodyEvent[];
   selectedSmallBodyIndex: number | null;
+  simulationTimeMs: number;
   onSelectBody: (bodyId: string) => void;
   onSelectSmallBody: (eventIndex: number) => void;
 };
@@ -92,6 +106,11 @@ function moonOrbitPositions(semiMajorAxisKm: number, center: Cartesian3, points 
   return positions;
 }
 
+function asFinite(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function SolarSystemCesiumScene({
   bodies,
   catalog,
@@ -100,6 +119,7 @@ export function SolarSystemCesiumScene({
   layers,
   smallBodyEvents,
   selectedSmallBodyIndex,
+  simulationTimeMs,
   onSelectBody,
   onSelectSmallBody
 }: Props) {
@@ -307,16 +327,45 @@ export function SolarSystemCesiumScene({
     if (layers.smallBodies && smallBodyEvents.length > 0) {
       const earthPos = positionMap.get('earth') ?? new Cartesian3(0, 0, 0);
       smallBodyEvents.slice(0, 24).forEach((event, index) => {
-        const distAu = Number(event.missDistanceAu);
-        const distanceMeters = Number.isFinite(distAu) && distAu > 0 ? distAu * AU_TO_SCENE_METERS : 0.18 * AU_TO_SCENE_METERS;
-        const theta = (index / Math.max(smallBodyEvents.length, 1)) * Math.PI * 2;
-        const phi = ((index % 7) / 6) * Math.PI - Math.PI / 2;
-        const x = earthPos.x + distanceMeters * Math.cos(theta) * Math.cos(phi);
-        const y = earthPos.y + distanceMeters * Math.sin(theta) * Math.cos(phi);
-        const z = earthPos.z + distanceMeters * Math.sin(phi) * 0.5;
         const designation = typeof event.designation === 'string' ? event.designation : `NEO-${index + 1}`;
         const selectedEvent = selectedSmallBodyIndex === index;
-        const markerPosition = new Cartesian3(x, y, z);
+        const eventIso =
+          typeof event.vectorEpochIso === 'string'
+            ? event.vectorEpochIso
+            : typeof event.closeApproachTimeIso === 'string'
+              ? event.closeApproachTimeIso
+              : null;
+        const eventEpochMs = eventIso ? Date.parse(eventIso) : Number.NaN;
+        const eventVectorX = asFinite(event.vectorKm?.x);
+        const eventVectorY = asFinite(event.vectorKm?.y);
+        const eventVectorZ = asFinite(event.vectorKm?.z);
+        const eventVelocityX = asFinite(event.velocityKmS?.x);
+        const eventVelocityY = asFinite(event.velocityKmS?.y);
+        const eventVelocityZ = asFinite(event.velocityKmS?.z);
+
+        let markerPosition: Cartesian3;
+        if (eventVectorX !== null && eventVectorY !== null && eventVectorZ !== null) {
+          const dtSeconds = Number.isFinite(eventEpochMs) ? (simulationTimeMs - eventEpochMs) / 1000 : 0;
+          const xKm = eventVectorX + (eventVelocityX ?? 0) * dtSeconds;
+          const yKm = eventVectorY + (eventVelocityY ?? 0) * dtSeconds;
+          const zKm = eventVectorZ + (eventVelocityZ ?? 0) * dtSeconds;
+          markerPosition = new Cartesian3(
+            earthPos.x + xKm * KM_TO_SCENE_METERS,
+            earthPos.y + yKm * KM_TO_SCENE_METERS,
+            earthPos.z + zKm * KM_TO_SCENE_METERS
+          );
+        } else {
+          const distAu = Number(event.missDistanceAu);
+          const distanceMeters =
+            Number.isFinite(distAu) && distAu > 0 ? distAu * AU_TO_SCENE_METERS : 0.18 * AU_TO_SCENE_METERS;
+          const theta = (index / Math.max(smallBodyEvents.length, 1)) * Math.PI * 2;
+          const phi = ((index % 7) / 6) * Math.PI - Math.PI / 2;
+          const x = earthPos.x + distanceMeters * Math.cos(theta) * Math.cos(phi);
+          const y = earthPos.y + distanceMeters * Math.sin(theta) * Math.cos(phi);
+          const z = earthPos.z + distanceMeters * Math.sin(phi) * 0.5;
+          markerPosition = new Cartesian3(x, y, z);
+        }
+
         smallBodyPositions.set(index, markerPosition);
         smallSource.entities.add({
           id: `small-body-${index}`,
@@ -346,7 +395,7 @@ export function SolarSystemCesiumScene({
     smallBodyPositionMapRef.current = smallBodyPositions;
 
     viewer.scene.requestRender();
-  }, [bodies, catalog, earthAnchor, layers.majorMoons, layers.planetLabels, layers.planetOrbits, layers.smallBodies, preset, selectedBodyId, selectedSmallBodyIndex, smallBodyEvents]);
+  }, [bodies, catalog, earthAnchor, layers.majorMoons, layers.planetLabels, layers.planetOrbits, layers.smallBodies, preset, selectedBodyId, selectedSmallBodyIndex, simulationTimeMs, smallBodyEvents]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
