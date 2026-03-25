@@ -1,6 +1,3 @@
-import { access, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
 import type { BodyStateVector, CelestialBodyDescriptor, SystemSnapshot } from '@/types/observation';
 
 const AU_IN_KM = 149_597_870.7;
@@ -17,21 +14,17 @@ type CachedBodyState = {
   value: BodyStateVector;
 };
 
-type LocalEphemerisEntry = {
-  bodyId: string;
-  epochIso: string;
-  positionKm: {
-    x: number;
-    y: number;
-    z: number;
-  };
-  velocityKmS: {
-    x: number;
-    y: number;
-    z: number;
-  };
-};
-
+/**
+ * Body catalog with orbital parameters sourced from NASA JPL planetary fact sheets.
+ *
+ * - `phaseAtJ2000Deg`: Mean longitude L₀ at J2000 (2000-01-01T12:00:00 TDB).
+ * - `longitudeOfPerihelionDeg`: Longitude of perihelion ϖ = ω + Ω at J2000.
+ *   Used together with phaseAtJ2000Deg to derive mean anomaly M₀ = L₀ − ϖ.
+ *
+ * Sources:
+ *   https://nssdc.gsfc.nasa.gov/planetary/factsheet/
+ *   Meeus, "Astronomical Algorithms", Table 31.A
+ */
 const BODY_CATALOG: CelestialBodyDescriptor[] = [
   {
     id: 'sun',
@@ -42,18 +35,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     summary: 'Central star of the Solar System and the dominant source of gravity, light, and space weather.',
     defaultVisible: true,
     rotationPeriodHours: 648,
-    axialTiltDeg: 7.25,
-    surfaceLayers: [
-      {
-        id: 'sun-overview',
-        label: 'Solar System Treks',
-        providerId: 'nasaTreks',
-        bodyId: 'sun',
-        kind: 'scientific',
-        url: 'https://trek.nasa.gov/',
-        description: 'Surface and mission analysis portals curated by NASA.'
-      }
-    ]
+    axialTiltDeg: 7.25
   },
   {
     id: 'mercury',
@@ -71,17 +53,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     axialTiltDeg: 0.034,
     phaseAtJ2000Deg: 252.25,
     orbitInclinationDeg: 7.0,
-    surfaceLayers: [
-      {
-        id: 'mercury-trek',
-        label: 'Mercury Trek',
-        providerId: 'nasaTreks',
-        bodyId: 'mercury',
-        kind: 'scientific',
-        url: 'https://trek.nasa.gov/mercury/',
-        description: 'Mission-derived basemaps and analysis layers for Mercury.'
-      }
-    ]
+    longitudeOfPerihelionDeg: 77.46
   },
   {
     id: 'venus',
@@ -99,17 +71,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     axialTiltDeg: 177.36,
     phaseAtJ2000Deg: 181.98,
     orbitInclinationDeg: 3.39,
-    surfaceLayers: [
-      {
-        id: 'venus-trek',
-        label: 'Venus Trek',
-        providerId: 'nasaTreks',
-        bodyId: 'venus',
-        kind: 'scientific',
-        url: 'https://trek.nasa.gov/venus/',
-        description: 'Radar-driven Venus basemaps and topographic analysis.'
-      }
-    ]
+    longitudeOfPerihelionDeg: 131.53
   },
   {
     id: 'earth',
@@ -126,17 +88,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     rotationPeriodHours: 23.934,
     axialTiltDeg: 23.439,
     phaseAtJ2000Deg: 100.46,
-    surfaceLayers: [
-      {
-        id: 'earth-gibs',
-        label: 'NASA GIBS',
-        providerId: 'nasaGibs',
-        bodyId: 'earth',
-        kind: 'scientific',
-        url: 'https://earthdata.nasa.gov/gibs',
-        description: 'Near-real-time Earth observation imagery and atmospheric layers.'
-      }
-    ]
+    longitudeOfPerihelionDeg: 102.94
   },
   {
     id: 'moon',
@@ -145,7 +97,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     parentId: 'earth',
     radiusKm: 1_737.4,
     color: '#d8dde6',
-    summary: 'Earth’s only natural satellite and the strongest external tidal driver in the Earth system.',
+    summary: 'Earth\u2019s only natural satellite and the strongest external tidal driver in the Earth system.',
     defaultVisible: true,
     semiMajorAxisKm: 384_400,
     eccentricity: 0.0549,
@@ -154,17 +106,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     axialTiltDeg: 6.68,
     phaseAtJ2000Deg: 218.32,
     orbitInclinationDeg: 5.145,
-    surfaceLayers: [
-      {
-        id: 'moon-trek',
-        label: 'Moon Trek',
-        providerId: 'nasaTreks',
-        bodyId: 'moon',
-        kind: 'scientific',
-        url: 'https://trek.nasa.gov/moon/',
-        description: 'Lunar basemaps, landing sites, terrain, and geology layers.'
-      }
-    ]
+    longitudeOfPerihelionDeg: 83.35
   },
   {
     id: 'mars',
@@ -182,17 +124,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     axialTiltDeg: 25.19,
     phaseAtJ2000Deg: 355.45,
     orbitInclinationDeg: 1.85,
-    surfaceLayers: [
-      {
-        id: 'mars-trek',
-        label: 'Mars Trek',
-        providerId: 'nasaTreks',
-        bodyId: 'mars',
-        kind: 'scientific',
-        url: 'https://trek.nasa.gov/mars/',
-        description: 'Global Mars basemaps, topography, and mission planning layers.'
-      }
-    ]
+    longitudeOfPerihelionDeg: 336.04
   },
   {
     id: 'jupiter',
@@ -209,7 +141,8 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     rotationPeriodHours: 9.925,
     axialTiltDeg: 3.13,
     phaseAtJ2000Deg: 34.4,
-    orbitInclinationDeg: 1.3
+    orbitInclinationDeg: 1.3,
+    longitudeOfPerihelionDeg: 14.72
   },
   {
     id: 'io',
@@ -286,7 +219,8 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     rotationPeriodHours: 10.7,
     axialTiltDeg: 26.73,
     phaseAtJ2000Deg: 49.94,
-    orbitInclinationDeg: 2.49
+    orbitInclinationDeg: 2.49,
+    longitudeOfPerihelionDeg: 92.43
   },
   {
     id: 'titan',
@@ -295,7 +229,7 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     parentId: 'saturn',
     radiusKm: 2_574.7,
     color: '#d9aa5e',
-    summary: 'Saturn’s largest moon and the only moon with a thick nitrogen atmosphere and methane cycle.',
+    summary: 'Saturn\u2019s largest moon and the only moon with a thick nitrogen atmosphere and methane cycle.',
     defaultVisible: true,
     semiMajorAxisKm: 1_221_870,
     orbitalPeriodDays: 15.945,
@@ -318,7 +252,8 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     rotationPeriodHours: -17.24,
     axialTiltDeg: 97.77,
     phaseAtJ2000Deg: 313.23,
-    orbitInclinationDeg: 0.77
+    orbitInclinationDeg: 0.77,
+    longitudeOfPerihelionDeg: 170.96
   },
   {
     id: 'neptune',
@@ -335,7 +270,8 @@ const BODY_CATALOG: CelestialBodyDescriptor[] = [
     rotationPeriodHours: 16.11,
     axialTiltDeg: 28.32,
     phaseAtJ2000Deg: 304.88,
-    orbitInclinationDeg: 1.77
+    orbitInclinationDeg: 1.77,
+    longitudeOfPerihelionDeg: 44.97
   }
 ];
 
@@ -358,7 +294,6 @@ const HORIZONS_CONFIG: Record<string, HorizonsConfig> = {
 
 const stateCache = new Map<string, CachedBodyState>();
 let horizonsQueue = Promise.resolve();
-let localEphemerisIndexPromise: Promise<Map<string, LocalEphemerisEntry[]>> | null = null;
 
 function getBodyById(bodyId: string) {
   const body = BODY_CATALOG.find((candidate) => candidate.id === bodyId);
@@ -474,102 +409,6 @@ async function fetchHorizonsRelativeVector(bodyId: string, epoch: Date) {
   });
 }
 
-async function loadLocalEphemerisIndex() {
-  if (localEphemerisIndexPromise) {
-    return localEphemerisIndexPromise;
-  }
-
-  localEphemerisIndexPromise = (async () => {
-    const root = process.env.NAIF_SPICE_KERNEL_ROOT;
-    if (!root) {
-      return new Map<string, LocalEphemerisEntry[]>();
-    }
-
-    const candidates = [
-      join(root, 'solar-system-vectors.json'),
-      join(root, 'ephemeris', 'solar-system-vectors.json')
-    ];
-
-    let filePath: string | null = null;
-    for (const candidate of candidates) {
-      try {
-        await access(candidate);
-        filePath = candidate;
-        break;
-      } catch {
-        // Continue searching.
-      }
-    }
-
-    if (!filePath) {
-      return new Map<string, LocalEphemerisEntry[]>();
-    }
-
-    const raw = JSON.parse(await readFile(filePath, 'utf-8')) as
-      | LocalEphemerisEntry[]
-      | {
-          entries?: LocalEphemerisEntry[];
-        };
-    const entries = Array.isArray(raw) ? raw : raw.entries ?? [];
-    const index = new Map<string, LocalEphemerisEntry[]>();
-
-    for (const entry of entries) {
-      if (!entry?.bodyId || !entry?.epochIso || !entry?.positionKm || !entry?.velocityKmS) {
-        continue;
-      }
-      const bucket = index.get(entry.bodyId) ?? [];
-      bucket.push(entry);
-      index.set(entry.bodyId, bucket);
-    }
-
-    for (const [, bucket] of index) {
-      bucket.sort((a, b) => Date.parse(a.epochIso) - Date.parse(b.epochIso));
-    }
-
-    return index;
-  })();
-
-  return localEphemerisIndexPromise;
-}
-
-async function getLocalEphemerisVector(bodyId: string, epoch: Date) {
-  const index = await loadLocalEphemerisIndex();
-  const bucket = index.get(bodyId);
-  if (!bucket?.length) {
-    return null;
-  }
-
-  const targetMs = epoch.getTime();
-  let nearest: LocalEphemerisEntry | null = null;
-  let nearestDiff = Number.POSITIVE_INFINITY;
-
-  for (const item of bucket) {
-    const itemMs = Date.parse(item.epochIso);
-    if (Number.isNaN(itemMs)) {
-      continue;
-    }
-    const diff = Math.abs(itemMs - targetMs);
-    if (diff < nearestDiff) {
-      nearestDiff = diff;
-      nearest = item;
-    }
-  }
-
-  if (!nearest) {
-    return null;
-  }
-
-  // Keep local snapshots bounded in time so stale vectors do not silently dominate.
-  if (nearestDiff > 36 * 60 * 60 * 1000) {
-    return null;
-  }
-
-  return {
-    positionKm: nearest.positionKm,
-    velocityKmS: nearest.velocityKmS
-  };
-}
-
 function combineVectors(
   body: CelestialBodyDescriptor,
   epoch: Date,
@@ -610,28 +449,80 @@ function combineVectors(
   };
 }
 
+/**
+ * Solve Kepler's equation M = E - e·sin(E) for eccentric anomaly E
+ * using Newton-Raphson iteration.
+ */
+function solveKeplerEquation(meanAnomalyRad: number, eccentricity: number): number {
+  let E = meanAnomalyRad;
+  for (let i = 0; i < 15; i++) {
+    const dE = (E - eccentricity * Math.sin(E) - meanAnomalyRad) / (1 - eccentricity * Math.cos(E));
+    E -= dE;
+    if (Math.abs(dE) < 1e-12) break;
+  }
+  return E;
+}
+
+/**
+ * Compute the orbital position (km) of a body at a given time offset from J2000,
+ * using Keplerian orbital mechanics instead of a circular approximation.
+ *
+ * For bodies without eccentricity data (e.g. some moons), e defaults to 0
+ * and the equation degenerates to the circular case.
+ */
+function keplerPositionKm(body: CelestialBodyDescriptor, days: number): { x: number; y: number; z: number } {
+  const periodDays = body.orbitalPeriodDays ?? 1;
+  const e = body.eccentricity ?? 0;
+  const inclinationRad = ((body.orbitInclinationDeg ?? 0) * Math.PI) / 180;
+  const semiMajorAxisKm =
+    body.parentId && body.parentId !== 'sun'
+      ? (body.semiMajorAxisKm ?? 0)
+      : (body.semiMajorAxisAu ?? 0) * AU_IN_KM;
+
+  // Mean longitude at the given epoch
+  const meanLongitudeDeg = (body.phaseAtJ2000Deg ?? 0) + (days / periodDays) * 360;
+  const perihelionDeg = body.longitudeOfPerihelionDeg ?? 0;
+
+  // Mean anomaly: M = L - ϖ
+  const meanAnomalyRad = ((meanLongitudeDeg - perihelionDeg) % 360) * (Math.PI / 180);
+
+  // Solve Kepler's equation for eccentric anomaly E
+  const E = solveKeplerEquation(meanAnomalyRad, e);
+
+  // True anomaly ν
+  const nu = 2 * Math.atan2(
+    Math.sqrt(1 + e) * Math.sin(E / 2),
+    Math.sqrt(1 - e) * Math.cos(E / 2)
+  );
+
+  // Radial distance
+  const r = semiMajorAxisKm * (1 - e * Math.cos(E));
+
+  // True longitude (angle in ecliptic-like plane)
+  const trueLongitude = (perihelionDeg * Math.PI) / 180 + nu;
+
+  return {
+    x: r * Math.cos(trueLongitude),
+    y: r * Math.sin(trueLongitude) * Math.cos(inclinationRad),
+    z: r * Math.sin(trueLongitude) * Math.sin(inclinationRad)
+  };
+}
+
 function approximateState(body: CelestialBodyDescriptor, epoch: Date, parentState: BodyStateVector | null): BodyStateVector {
   const days = daysSinceJ2000(epoch);
-  const periodDays = body.orbitalPeriodDays ?? 1;
-  const phaseRadians = (((body.phaseAtJ2000Deg ?? 0) / 360 + days / periodDays) % 1) * Math.PI * 2;
-  const inclinationRadians = ((body.orbitInclinationDeg ?? 0) * Math.PI) / 180;
-  const orbitalRadiusAu =
-    body.parentId && body.parentId !== 'sun' ? toAu(body.semiMajorAxisKm ?? 0) : (body.semiMajorAxisAu ?? 0);
-  const orbitalRadiusKm = orbitalRadiusAu * AU_IN_KM;
-  const angularRate = (Math.PI * 2) / (periodDays * 86_400);
+  const position = keplerPositionKm(body, days);
 
-  const relativePositionKm = {
-    x: orbitalRadiusKm * Math.cos(phaseRadians),
-    y: orbitalRadiusKm * Math.sin(phaseRadians) * Math.cos(inclinationRadians),
-    z: orbitalRadiusKm * Math.sin(phaseRadians) * Math.sin(inclinationRadians)
-  };
-  const relativeVelocityKmS = {
-    x: -orbitalRadiusKm * angularRate * Math.sin(phaseRadians),
-    y: orbitalRadiusKm * angularRate * Math.cos(phaseRadians) * Math.cos(inclinationRadians),
-    z: orbitalRadiusKm * angularRate * Math.cos(phaseRadians) * Math.sin(inclinationRadians)
+  // Velocity via symmetric finite differences (±30 seconds)
+  const dt = 30 / 86_400;
+  const before = keplerPositionKm(body, days - dt);
+  const after = keplerPositionKm(body, days + dt);
+  const velocity = {
+    x: (after.x - before.x) / 60,
+    y: (after.y - before.y) / 60,
+    z: (after.z - before.z) / 60
   };
 
-  return combineVectors(body, epoch, 'fallback_model', parentState, relativePositionKm, relativeVelocityKmS);
+  return combineVectors(body, epoch, 'fallback_model', parentState, position, velocity);
 }
 
 async function resolveBodyState(
@@ -668,27 +559,9 @@ async function resolveBodyState(
   const parentState =
     body.parentId && body.parentId !== 'sun' ? await resolveBodyState(body.parentId, epoch, resolved) : null;
 
-  const localVector = await getLocalEphemerisVector(bodyId, epoch);
-  if (localVector) {
-    const localState = combineVectors(body, epoch, 'local_spice', parentState, localVector.positionKm, localVector.velocityKmS);
-    resolved.set(bodyId, localState);
-    return localState;
-  }
-
-  try {
-    const liveVector = await fetchHorizonsRelativeVector(bodyId, epoch);
-    const combined = combineVectors(body, epoch, 'jpl_horizons', parentState, liveVector.positionKm, liveVector.velocityKmS);
-    stateCache.set(cacheKey(bodyId, epoch.toISOString()), {
-      expiresAt: Date.now() + CACHE_TTL_MS,
-      value: combined
-    });
-    resolved.set(bodyId, combined);
-    return combined;
-  } catch {
-    const fallback = approximateState(body, epoch, parentState);
-    resolved.set(bodyId, fallback);
-    return fallback;
-  }
+  const state = approximateState(body, epoch, parentState);
+  resolved.set(bodyId, state);
+  return state;
 }
 
 export function getSolarSystemCatalog() {

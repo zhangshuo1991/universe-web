@@ -56,6 +56,38 @@ export async function getProviderCatalog(): Promise<ProviderDescriptor[]> {
       lastCheckedIso: health.usgs.checkedAtIso ?? checkedAt
     },
     {
+      id: 'gdelt',
+      name: 'GDELT News',
+      category: 'news',
+      enabled: true,
+      optional: false,
+      status: 'available',
+      docsUrl: 'https://www.gdeltproject.org/',
+      lastCheckedIso: checkedAt
+    },
+    {
+      id: 'rss',
+      name: 'Curated RSS Feeds',
+      category: 'news',
+      enabled: true,
+      optional: false,
+      status: health.rss.status,
+      reason: health.rss.reason,
+      docsUrl: 'https://www.rssboard.org/rss-specification',
+      lastCheckedIso: health.rss.checkedAtIso ?? checkedAt
+    },
+    {
+      id: 'geoHub',
+      name: 'Geo Hub Index',
+      category: 'catalog',
+      enabled: true,
+      optional: false,
+      status: health.geoHub.status,
+      reason: health.geoHub.reason,
+      docsUrl: 'https://en.wikipedia.org/wiki/Gazetteer',
+      lastCheckedIso: health.geoHub.checkedAtIso ?? checkedAt
+    },
+    {
       id: 'jplHorizons',
       name: 'JPL Horizons',
       category: 'ephemeris',
@@ -76,17 +108,6 @@ export async function getProviderCatalog(): Promise<ProviderDescriptor[]> {
       reason: health.jplCneos.reason,
       docsUrl: 'https://ssd-api.jpl.nasa.gov/',
       lastCheckedIso: health.jplCneos.checkedAtIso ?? checkedAt
-    },
-    {
-      id: 'naifSpice',
-      name: 'NAIF SPICE',
-      category: 'ephemeris',
-      enabled: health.naifSpice.status === 'available',
-      optional: true,
-      status: health.naifSpice.status,
-      reason: health.naifSpice.reason,
-      docsUrl: 'https://naif.jpl.nasa.gov/naif/',
-      lastCheckedIso: health.naifSpice.checkedAtIso ?? checkedAt
     },
     {
       id: 'nasaPds',

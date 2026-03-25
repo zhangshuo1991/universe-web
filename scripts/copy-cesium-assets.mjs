@@ -1,26 +1,30 @@
-import { cpSync, existsSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { cpSync, existsSync, mkdirSync } from 'fs';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
-const sourceRoot = path.join(projectRoot, 'node_modules', 'cesium', 'Build', 'Cesium');
-const targetRoot = path.join(projectRoot, 'public', 'cesiumStatic');
-const folders = ['Workers', 'ThirdParty', 'Assets', 'Widgets'];
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, '..');
+const cesiumBuild = join(root, 'node_modules', 'cesium', 'Build', 'Cesium');
+const dest = join(root, 'public', 'cesiumStatic');
 
-if (!existsSync(sourceRoot)) {
-  console.warn('[copy-cesium-assets] Cesium build output not found, skipping.');
+if (!existsSync(cesiumBuild)) {
+  console.log('[copy-cesium-assets] cesium package not found, skipping.');
   process.exit(0);
 }
 
-mkdirSync(targetRoot, { recursive: true });
+mkdirSync(dest, { recursive: true });
 
-for (const folder of folders) {
-  cpSync(path.join(sourceRoot, folder), path.join(targetRoot, folder), {
-    recursive: true,
-    force: true
-  });
+const dirs = ['Workers', 'ThirdParty', 'Assets', 'Widgets'];
+
+for (const dir of dirs) {
+  const src = join(cesiumBuild, dir);
+  const target = join(dest, dir);
+  if (existsSync(src)) {
+    cpSync(src, target, { recursive: true, force: true });
+    console.log(`[copy-cesium-assets] ${dir} → public/cesiumStatic/${dir}`);
+  } else {
+    console.warn(`[copy-cesium-assets] ${dir} not found in cesium build, skipping.`);
+  }
 }
 
-console.log('[copy-cesium-assets] Copied Cesium static assets to public/cesiumStatic');
+console.log('[copy-cesium-assets] Done.');

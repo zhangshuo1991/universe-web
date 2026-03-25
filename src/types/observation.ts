@@ -3,10 +3,12 @@ export type ProviderId =
   | 'celestrak'
   | 'openMeteo'
   | 'usgs'
+  | 'gdelt'
+  | 'rss'
+  | 'geoHub'
   | 'jplHorizons'
   | 'jplCneos'
   | 'googleMaps'
-  | 'naifSpice'
   | 'nasaPds'
   | 'nasaTreks'
   | 'noaaSwpc';
@@ -16,6 +18,7 @@ export type ProviderCategory =
   | 'satellite'
   | 'weather'
   | 'events'
+  | 'news'
   | 'ephemeris'
   | 'maps'
   | 'catalog'
@@ -55,16 +58,6 @@ export type ObservationCitation = {
 
 export type CelestialBodyCategory = 'star' | 'planet' | 'moon';
 
-export type SurfaceLayerDescriptor = {
-  id: string;
-  label: string;
-  providerId: ProviderId;
-  bodyId: string;
-  kind: 'visual' | 'scientific';
-  url: string;
-  description: string;
-};
-
 export type CelestialBodyDescriptor = {
   id: string;
   name: string;
@@ -83,14 +76,14 @@ export type CelestialBodyDescriptor = {
   axialTiltDeg?: number;
   phaseAtJ2000Deg?: number;
   orbitInclinationDeg?: number;
-  surfaceLayers?: SurfaceLayerDescriptor[];
+  longitudeOfPerihelionDeg?: number;
 };
 
 export type BodyStateVector = {
   bodyId: string;
   parentId?: string;
   epochIso: string;
-  source: 'jpl_horizons' | 'cached_horizons' | 'local_spice' | 'fallback_model';
+  source: 'jpl_horizons' | 'cached_horizons' | 'fallback_model';
   positionKm: {
     x: number;
     y: number;

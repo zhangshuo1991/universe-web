@@ -10,7 +10,8 @@ export function OrbitDial({ earthState }: { earthState: EarthState }) {
 
   return (
     <div className="orbitDial">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="orbitSvg" aria-label="Earth orbit dial">
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="orbitSvg" aria-label="Earth orbit dial" role="img">
+        <title>Earth orbit position — {earthState.seasonLabel}</title>
         <defs>
           <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#fff5bf" />

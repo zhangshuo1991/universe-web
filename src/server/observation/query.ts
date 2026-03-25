@@ -462,51 +462,28 @@ async function queryBodyMetadata(bodyId: string): Promise<ObservationQueryRespon
 
 async function queryBodyState(bodyId: string, epochIso?: string): Promise<ObservationQueryResponse> {
   const state = await getBodyState(bodyId, epochIso);
-  const providerId = state.source === 'local_spice' ? 'naifSpice' : 'jplHorizons';
-  const fallback = state.source === 'fallback_model';
   return {
     kind: 'body_state',
-    providerId,
+    providerId: 'jplHorizons',
     generatedAtIso: new Date().toISOString(),
     data: state,
-    citations: dedupeCitations([
-      citation('jplHorizons', 'JPL Horizons System API', 'https://ssd-api.jpl.nasa.gov/doc/horizons.html'),
-      state.source === 'local_spice' ? citation('naifSpice', 'NAIF SPICE Toolkit', 'https://naif.jpl.nasa.gov/naif/') : null,
-      fallback ? citation('naifSpice', 'Fallback orbital approximation model', 'https://naif.jpl.nasa.gov/naif/') : null
-    ])
+    citations: [
+      citation('jplHorizons', 'JPL Horizons System API', 'https://ssd-api.jpl.nasa.gov/doc/horizons.html')
+    ]
   };
 }
 
 async function querySystemSnapshot(bodyIds?: string[], epochIso?: string): Promise<ObservationQueryResponse> {
   const snapshot = await getSystemSnapshot(bodyIds, epochIso);
-  const includesLocalSpice = snapshot.bodies.some((body) => body.source === 'local_spice');
-  const includesFallback = snapshot.bodies.some((body) => body.source === 'fallback_model');
   return {
     kind: 'system_snapshot',
-    providerId: includesLocalSpice ? 'naifSpice' : 'jplHorizons',
+    providerId: 'jplHorizons',
     generatedAtIso: new Date().toISOString(),
     data: snapshot,
-    citations: dedupeCitations([
-      citation('jplHorizons', 'JPL Horizons System API', 'https://ssd-api.jpl.nasa.gov/doc/horizons.html'),
-      includesLocalSpice ? citation('naifSpice', 'NAIF SPICE Toolkit', 'https://naif.jpl.nasa.gov/naif/') : null,
-      includesFallback ? citation('naifSpice', 'Fallback orbital approximation model', 'https://naif.jpl.nasa.gov/naif/') : null
-    ])
+    citations: [
+      citation('jplHorizons', 'JPL Horizons System API', 'https://ssd-api.jpl.nasa.gov/doc/horizons.html')
+    ]
   };
-}
-
-function dedupeCitations(items: Array<ObservationQueryResponse['citations'][number] | null>) {
-  const seen = new Set<string>();
-  return items.filter((item): item is ObservationQueryResponse['citations'][number] => {
-    if (!item) {
-      return false;
-    }
-    const key = `${item.providerId}:${item.url}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 }
 
 const AU_IN_KM = 149_597_870.7;
@@ -834,8 +811,7 @@ async function querySmallBodyEvents(maxResults: number): Promise<ObservationQuer
     citations: [
       citation('jplCneos', 'JPL CAD API', 'https://ssd-api.jpl.nasa.gov/doc/cad.html'),
       citation('jplCneos', 'JPL Fireball API', 'https://ssd-api.jpl.nasa.gov/doc/fireball.html'),
-      citation('jplCneos', 'JPL SBDB API', 'https://ssd-api.jpl.nasa.gov/doc/sbdb.html'),
-      citation('naifSpice', 'Two-body Kepler propagation (SBDB elements)', 'https://naif.jpl.nasa.gov/naif/')
+      citation('jplCneos', 'JPL SBDB API', 'https://ssd-api.jpl.nasa.gov/doc/sbdb.html')
     ]
   };
 }

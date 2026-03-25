@@ -1,19 +1,18 @@
 # Findings
 
-- Workspace started effectively empty except for `docs/brainstorms`.
-- Node.js, npm, and pnpm are installed locally.
-- The workspace is not a git repository.
-- The initial implementation target is a runnable skeleton, not a full product.
-- Decided to manually scaffold the Next.js app in-place to avoid `create-next-app` conflicts with planning files.
-- Chose a Cesium static-asset copy script instead of custom webpack plugins to keep the setup explicit.
-- Installed current dependency set resolved by pnpm, including Next.js 15.5.13, Cesium 1.139.1, React 19.2.4, and OpenAI SDK 5.23.2.
-- Cesium 1.139 expects `Viewer` initialization through `baseLayer` rather than the legacy `imageryProvider` option in TypeScript definitions.
-- `public/cesiumStatic/Assets/Textures/NaturalEarthII` is available after postinstall and is sufficient for an offline-friendly Earth base layer.
-- `pnpm typecheck`, `pnpm lint`, and `pnpm build` all pass after the final fixes.
-- Nominatim geocoding will be proxied through a server route so requests carry an explicit application user agent rather than exposing the public endpoint directly from the browser.
-- The same geocoding primitive is now shared by the browser search route and the LLM tool loop, which restores agent-native parity for named-place navigation.
-- Satellite data will use CelesTrak JSON OMM feeds, which can be consumed directly by `satellite.js` via `json2satrec`.
-- CelesTrak OMM fields can arrive as either strings or numbers, so the server-side schema must accept both shapes to remain robust.
-- NASA GIBS exposes default RESTful WMTS tiles that can be consumed without an extra capabilities parse at runtime.
-- Inertial camera mode is implemented with Cesium ICRF transforms and works by locking the camera in an inertial frame while Earth rotates beneath it.
-- The viewer now exposes Moon, satellite, cloud, and near-surface temperature layers through both the UI and agent tools.
+## Current Integration Points
+- `src/components/earth/EarthObserver.tsx` owns provider loading, earthquake/satellite refresh, and location digest fetching.
+- `src/components/earth/panels/LocationDigestPanel.tsx` renders selected-location details, layer controls, about, and highlights/landmarks.
+- `src/server/locationDigest.ts` builds the current digest from reverse geocode, weather, solar info, and GDELT news.
+- `src/server/locationNews.ts` currently only queries GDELT and optionally asks OpenAI for a short summary.
+- `src/types/explorer.ts` contains the digest/news summary types and is the main schema expansion point.
+
+## Architecture Constraints
+- The app is a single Next.js app with no existing Redis/cache tier.
+- Existing UX already has a `highlights` section, which is the cleanest place to add hotspot entry cards.
+- Existing selected-location flow should be preserved so map click and landmark click continue to work.
+
+## Implementation Notes
+- Added a new `src/server/locationIntel/` service slice for Geo Hub data, RSS source definitions, XML parsing, feed fetching, hotspot aggregation, and deterministic location-intel summarization.
+- Extended `LocationDigest` rather than creating a separate detail payload, so the existing `/api/location-digest` route remains the main selected-location contract.
+- Added `/api/location-hotspots` for the `highlights` surface and wired hotspot state through the Zustand store.

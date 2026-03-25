@@ -34,10 +34,6 @@ function hasGoogleMapsKey() {
   return Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
 }
 
-function hasSpiceKernelRoot() {
-  return Boolean(process.env.NAIF_SPICE_KERNEL_ROOT);
-}
-
 async function runProviderProbes(): Promise<Record<ProviderId, ProviderHealthResult>> {
   const checkedAt = nowIso();
   const results: Record<ProviderId, ProviderHealthResult> = {
@@ -45,11 +41,11 @@ async function runProviderProbes(): Promise<Record<ProviderId, ProviderHealthRes
     celestrak: { status: 'degraded', checkedAtIso: checkedAt },
     openMeteo: { status: 'degraded', checkedAtIso: checkedAt },
     usgs: { status: 'degraded', checkedAtIso: checkedAt },
+    gdelt: { status: 'available', checkedAtIso: checkedAt },
+    rss: { status: 'available', checkedAtIso: checkedAt },
+    geoHub: { status: 'available', checkedAtIso: checkedAt },
     jplHorizons: { status: 'degraded', checkedAtIso: checkedAt },
     jplCneos: { status: 'degraded', checkedAtIso: checkedAt },
-    naifSpice: hasSpiceKernelRoot()
-      ? { status: 'available', checkedAtIso: checkedAt }
-      : { status: 'disabled', checkedAtIso: checkedAt, reason: 'Set NAIF_SPICE_KERNEL_ROOT to enable local SPICE kernels.' },
     nasaPds: { status: 'degraded', checkedAtIso: checkedAt },
     nasaTreks: { status: 'degraded', checkedAtIso: checkedAt },
     noaaSwpc: { status: 'degraded', checkedAtIso: checkedAt },

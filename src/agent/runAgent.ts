@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
 
 import { runFallbackAgent } from '@/agent/fallback';
 import { buildSystemPrompt } from '@/agent/systemPrompt';
@@ -220,6 +221,19 @@ async function executeTool(
   };
 }
 
+/** Convert our tool definitions to Chat Completions format */
+function getChatTools(): ChatCompletionTool[] {
+  const rawTools = getToolDefinitions();
+  return rawTools.map((tool) => ({
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+    }
+  }));
+}
+
 export async function runAgent(messages: AgentMessage[], context: AgentContext): Promise<AgentResponsePayload> {
   const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
 
@@ -239,85 +253,100 @@ export async function runAgent(messages: AgentMessage[], context: AgentContext):
     apiKey: process.env.OPENAI_API_KEY,
     baseURL: process.env.OPENAI_BASE_URL || undefined
   });
-  const tools = getToolDefinitions();
+  const chatTools = getChatTools();
   const actions: AgentResponsePayload['actions'] = [];
   const citations: NonNullable<AgentResponsePayload['citations']> = [];
   const artifacts: NonNullable<AgentResponsePayload['artifacts']> = [];
-  const model = process.env.OPENAI_MODEL ?? 'gpt-5';
+  const model = process.env.OPENAI_MODEL ?? 'gpt-4o';
 
-  let response = await client.responses.create({
+  // Build conversation history for Chat Completions API
+  const chatMessages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildSystemPrompt(context) },
+    ...messages.map((msg) => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }))
+  ];
+
+  let response = await client.chat.completions.create({
     model,
-    instructions: buildSystemPrompt(context),
-    input: messages.map((message) => ({
-      role: message.role,
-      content: [{ type: 'input_text', text: message.content }]
-    })) as never,
-    tools: tools as never
+    messages: chatMessages,
+    tools: chatTools,
+    tool_choice: 'auto'
   });
 
   for (let iteration = 0; iteration < 4; iteration += 1) {
-    const outputItems = (response.output ?? []) as Array<{
-      type: string;
-      name?: keyof typeof toolSchemas;
-      arguments?: string;
-      call_id?: string;
-    }>;
-    const toolCalls = outputItems.filter((item) => item.type === 'function_call' && item.name && item.call_id);
+    const choice = response.choices[0];
+    if (!choice) break;
 
-    if (toolCalls.length === 0) {
+    const message = choice.message;
+    const toolCalls = message.tool_calls;
+
+    // No tool calls — return the text response
+    if (!toolCalls || toolCalls.length === 0) {
       return {
         provider: 'openai',
         actions,
-        reply: response.output_text || '已完成 viewer 更新。',
+        reply: message.content || '已完成分析。',
         citations,
         artifacts
       };
     }
 
-    const toolOutputs = await Promise.all(
-      toolCalls.map(async (call) => {
-        try {
-          const parsedArgs = safeJsonParse(call.arguments ?? '{}');
-          const result = await executeTool(call.name!, parsedArgs);
-          if (result.action) {
-            actions.push(result.action);
-          }
-          if (result.citations?.length) {
-            citations.push(...result.citations);
-          }
-          if (result.artifacts?.length) {
-            artifacts.push(...result.artifacts);
-          }
+    // Add assistant message with tool calls to history
+    chatMessages.push({
+      role: 'assistant',
+      content: message.content ?? null,
+      tool_calls: toolCalls
+    } as ChatCompletionMessageParam);
 
-          return {
-            type: 'function_call_output',
-            call_id: call.call_id!,
-            output: JSON.stringify(result.output)
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Tool execution failed';
-          return {
-            type: 'function_call_output',
-            call_id: call.call_id!,
-            output: JSON.stringify({ ok: false, error: message })
-          };
+    // Execute all tool calls
+    for (const call of toolCalls) {
+      if (call.type !== 'function') continue;
+      const toolName = call.function.name as keyof typeof toolSchemas;
+      try {
+        const parsedArgs = safeJsonParse(call.function.arguments ?? '{}');
+        const result = await executeTool(toolName, parsedArgs);
+        if (result.action) {
+          actions.push(result.action);
         }
-      })
-    );
+        if (result.citations?.length) {
+          citations.push(...result.citations);
+        }
+        if (result.artifacts?.length) {
+          artifacts.push(...result.artifacts);
+        }
 
-    response = await client.responses.create({
+        chatMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify(result.output)
+        });
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : 'Tool execution failed';
+        chatMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({ ok: false, error: errMessage })
+        });
+      }
+    }
+
+    // Continue conversation with tool results
+    response = await client.chat.completions.create({
       model,
-      previous_response_id: response.id,
-      instructions: buildSystemPrompt(context),
-      input: toolOutputs as never,
-      tools: tools as never
+      messages: chatMessages,
+      tools: chatTools,
+      tool_choice: 'auto'
     });
   }
 
+  // Reached iteration limit
+  const finalContent = response.choices[0]?.message?.content;
   return {
     provider: 'openai',
     actions,
-    reply: response.output_text || 'Reached tool-call limit for this turn.',
+    reply: finalContent || '已完成数据查询和分析。',
     citations,
     artifacts
   };
