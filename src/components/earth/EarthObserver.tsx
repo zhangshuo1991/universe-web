@@ -49,6 +49,7 @@ export default function EarthObserver() {
   const inertialMode = useViewerStore((s) => s.inertialMode);
   const layers = useViewerStore((s) => s.layers);
   const annotations = useViewerStore((s) => s.annotations);
+  const routePreview = useViewerStore((s) => s.routePreview);
   const controller = useViewerStore((s) => s.controller);
   const selectedLocation = useViewerStore((s) => s.selectedLocation);
   const locationDigest = useViewerStore((s) => s.locationDigest);
@@ -71,11 +72,13 @@ export default function EarthObserver() {
   const pushChatMessage = useViewerStore((s) => s.pushChatMessage);
   const toggleLayer = useViewerStore((s) => s.toggleLayer);
   const toggleSatelliteCategory = useViewerStore((s) => s.toggleSatelliteCategory);
+  const clearRoutePreview = useViewerStore((s) => s.clearRoutePreview);
 
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [commandBusy, setCommandBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<SidebarSection>('explore');
   const [bottomSheetState, setBottomSheetState] = useState<'collapsed' | 'half' | 'full'>('collapsed');
+  const [hotspotMarkersEnabled, setHotspotMarkersEnabled] = useState(true);
   const commandBusyRef = useRef(false);
 
   const earthStateTimeMs = Math.floor(currentTimeMs / 1000) * 1000;
@@ -171,12 +174,12 @@ export default function EarthObserver() {
   }, [loadProviders]);
 
   useEffect(() => {
-    if (activeSection !== 'highlights' || locationHotspots.length > 0 || locationHotspotsLoading) {
+    if (locationHotspots.length > 0 || locationHotspotsLoading) {
       return;
     }
 
     loadLocationHotspots();
-  }, [activeSection, loadLocationHotspots, locationHotspots.length, locationHotspotsLoading]);
+  }, [loadLocationHotspots, locationHotspots.length, locationHotspotsLoading]);
 
   useEffect(() => {
     if (!layers.satellites) return;
@@ -347,16 +350,18 @@ export default function EarthObserver() {
         pitch: -56,
         label: landmark.name
       });
+      clearRoutePreview();
       void requestLocationDigest(landmark.lat, landmark.lon, { landmark });
     },
-    [controller, requestLocationDigest]
+    [clearRoutePreview, controller, requestLocationDigest]
   );
 
   const handleLocationClick = useCallback(
     (lat: number, lon: number) => {
+      clearRoutePreview();
       void requestLocationDigest(lat, lon);
     },
-    [requestLocationDigest]
+    [clearRoutePreview, requestLocationDigest]
   );
 
   const handleClearSelection = useCallback(() => {
@@ -365,17 +370,19 @@ export default function EarthObserver() {
       setLocationDigest(null);
       setLocationLoading(false);
     });
+    clearRoutePreview();
     setBottomSheetState('collapsed');
     controller?.flyTo(GLOBAL_VIEW);
-  }, [controller, setLocationDigest, setLocationLoading, setSelectedLocation]);
+  }, [clearRoutePreview, controller, setLocationDigest, setLocationLoading, setSelectedLocation]);
 
   const handlePlaceSelect = useCallback(
     (lat: number, lon: number, label: string) => {
       controller?.flyTo({ lat, lon, altitude: 800_000, pitch: -56, label });
       setBottomSheetState('half');
+      clearRoutePreview();
       void requestLocationDigest(lat, lon, { placeName: label });
     },
-    [controller, requestLocationDigest]
+    [clearRoutePreview, controller, requestLocationDigest]
   );
 
   const handleHotspotSelect = useCallback(
@@ -389,9 +396,10 @@ export default function EarthObserver() {
         pitch: -58,
         label: hotspot.name
       });
+      clearRoutePreview();
       void requestLocationDigest(hotspot.lat, hotspot.lon, { placeName: hotspot.name });
     },
-    [controller, requestLocationDigest]
+    [clearRoutePreview, controller, requestLocationDigest]
   );
 
   const handleSectionChange = useCallback(
@@ -404,12 +412,13 @@ export default function EarthObserver() {
           setLocationDigest(null);
           setLocationLoading(false);
         });
+        clearRoutePreview();
         controller?.flyTo(GLOBAL_VIEW);
       } else {
         setBottomSheetState('half');
       }
     },
-    [controller, setLocationDigest, setLocationLoading, setSelectedLocation]
+    [clearRoutePreview, controller, setLocationDigest, setLocationLoading, setSelectedLocation]
   );
 
   const handleLocateMoon = useCallback(() => {
@@ -443,10 +452,10 @@ export default function EarthObserver() {
       if (objectId === 'moon') {
         if (!layers.moon) toggleLayer('moon', true);
         controller?.locateMoon?.();
-        setObjectSelected('月球', '地球唯一的天然卫星，距地球约384,400公里');
+        setObjectSelected('月球', '当前视图会沿月球方向转向天空，用于观察月球在此刻的相对方位，不对应地表上的具体落点。');
       } else if (objectId === 'sun') {
         controller?.locateSun?.();
-        setObjectSelected('太阳', '太阳系中心恒星，距地球约1.5亿公里');
+        setObjectSelected('太阳', '当前视图会沿太阳方向转向天空，用于观察太阳在此刻的相对方向，不对应地表上的具体落点。');
       } else if (objectId === 'iss') {
         if (!layers.satellites) toggleLayer('satellites', true);
         controller?.locateSatellite?.(25544);
@@ -460,11 +469,21 @@ export default function EarthObserver() {
     [controller, layers.moon, layers.satellites, toggleLayer, setSelectedLocation, setLocationDigest, setLocationLoading]
   );
 
+  const visibleHotspots = useMemo(
+    () => (hotspotMarkersEnabled ? locationHotspots.slice(0, 15) : []),
+    [hotspotMarkersEnabled, locationHotspots]
+  );
+
   const showDetail = selectedLocation !== null || activeSection === 'layers' || activeSection === 'about' || activeSection === 'highlights';
 
   return (
     <div className={`earthStage ${showDetail ? 'detailVisible' : ''}`} data-sheet={bottomSheetState}>
-      <ExplorerSidebar activeSection={activeSection} onChange={handleSectionChange} />
+      <ExplorerSidebar
+        activeSection={activeSection}
+        onChange={handleSectionChange}
+        hotspotMarkersEnabled={hotspotMarkersEnabled}
+        onToggleHotspotMarkers={() => setHotspotMarkersEnabled((prev) => !prev)}
+      />
 
       <main className="globePanel" id="viewer-main">
         <div className="viewerFrame">
@@ -488,11 +507,14 @@ export default function EarthObserver() {
             layers={layers}
             inertialMode={inertialMode}
             annotations={annotations}
+            hotspots={visibleHotspots}
+            routePreview={routePreview}
             selectedLocation={selectedLocation}
             satellites={filteredSatellites}
             earthquakes={earthquakes}
             landmarks={FEATURED_LANDMARKS}
             onLocationClick={handleLocationClick}
+            onHotspotSelect={handleHotspotSelect}
             onLandmarkSelect={handleLandmarkSelect}
             onReady={setController}
           />
@@ -504,7 +526,7 @@ export default function EarthObserver() {
         <button
           type="button"
           className="drawerHandle"
-          aria-label="拖动面板"
+          aria-label="切换详情面板"
           onClick={() =>
             setBottomSheetState((prev) =>
               prev === 'collapsed' ? 'half' : prev === 'half' ? 'full' : 'collapsed'
@@ -517,6 +539,7 @@ export default function EarthObserver() {
           activeSection={activeSection}
           landmarks={FEATURED_LANDMARKS}
           hotspots={locationHotspots}
+          hotspotMarkersEnabled={hotspotMarkersEnabled}
           selectedLocation={selectedLocation}
           locationDigest={locationDigest}
           locationLoading={locationLoading}
@@ -525,7 +548,7 @@ export default function EarthObserver() {
           layers={layers}
           satelliteCategories={satelliteCategories}
           onSelectLandmark={handleLandmarkSelect}
-          onSelectHotspot={handleHotspotSelect}
+          onToggleHotspotMarkers={() => setHotspotMarkersEnabled((prev) => !prev)}
           onClearSelection={handleClearSelection}
           onToggleLayer={toggleLayer}
           onToggleSatelliteCategory={toggleSatelliteCategory}

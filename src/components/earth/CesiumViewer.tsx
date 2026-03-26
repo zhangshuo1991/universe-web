@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { ViewerFallback } from '@/components/earth/ViewerFallback';
+import { compactMapLabel, getHotspotColor } from '@/components/earth/mapLabel';
 import type { ViewerLayerId } from '@/types/agent';
-import type { ViewerController, Annotation, EarthquakeEvent } from '@/store/viewerStore';
+import type { ViewerController, Annotation, EarthquakeEvent, RoutePreview, SelectedLocation } from '@/store/viewerStore';
 import type { SatelliteFeedItem } from '@/server/satellites';
-import type { Landmark } from '@/types/explorer';
+import type { Landmark, LocationHotspot } from '@/types/explorer';
 
 const MAPTILER_API_KEY = process.env.NEXT_PUBLIC_MAPTILER_API_KEY;
 const HAS_MAPTILER_TERRAIN = Boolean(MAPTILER_API_KEY);
@@ -15,13 +17,16 @@ type CesiumViewerProps = {
   layers: Record<ViewerLayerId, boolean>;
   inertialMode: boolean;
   annotations: Annotation[];
-  selectedLocation: { lat: number; lon: number; label?: string } | null;
+  hotspots: LocationHotspot[];
+  routePreview: RoutePreview | null;
+  selectedLocation: SelectedLocation | null;
   satellites: SatelliteFeedItem[];
   earthquakes: EarthquakeEvent[];
   landmarks: Landmark[];
   onLocationClick: (lat: number, lon: number) => void;
+  onHotspotSelect: (hotspot: LocationHotspot) => void;
   onLandmarkSelect: (landmark: Landmark) => void;
-  onReady: (controller: ViewerController) => void;
+  onReady: (controller: ViewerController | null) => void;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,11 +37,14 @@ export default function CesiumViewerComponent({
   layers,
   inertialMode,
   annotations,
+  hotspots,
+  routePreview,
   selectedLocation,
   satellites,
   earthquakes,
   landmarks,
   onLocationClick,
+  onHotspotSelect,
   onLandmarkSelect,
   onReady
 }: CesiumViewerProps) {
@@ -44,17 +52,27 @@ export default function CesiumViewerComponent({
   const viewerRef = useRef<CesiumAny>(null);
   const cesiumRef = useRef<CesiumAny>(null);
   const annotationEntitiesRef = useRef<Map<string, CesiumAny>>(new Map());
+  const hotspotEntitiesRef = useRef<Map<string, CesiumAny>>(new Map());
   const landmarkEntitiesRef = useRef<Map<string, CesiumAny>>(new Map());
   const locationPinRef = useRef<CesiumAny>(null);
   const satelliteEntitiesRef = useRef<Map<number, CesiumAny>>(new Map());
   const earthquakeEntitiesRef = useRef<Map<string, CesiumAny>>(new Map());
+  const routeEntitiesRef = useRef<CesiumAny[]>([]);
   const satrecCacheRef = useRef<Map<number, CesiumAny>>(new Map());
   const labelLayerRef = useRef<CesiumAny>(null);
   const lastSatPropRef = useRef<number>(-Infinity);
   const onLocationClickRef = useRef(onLocationClick);
+  const onHotspotSelectRef = useRef(onHotspotSelect);
   const onLandmarkSelectRef = useRef(onLandmarkSelect);
+  const [viewerIssue, setViewerIssue] = useState<string | null>(null);
+  const [fallbackCamera, setFallbackCamera] = useState(() => ({
+    centerLat: 18,
+    centerLon: 15,
+    zoom: 1
+  }));
 
   onLocationClickRef.current = onLocationClick;
+  onHotspotSelectRef.current = onHotspotSelect;
   onLandmarkSelectRef.current = onLandmarkSelect;
 
   useEffect(() => {
@@ -63,229 +81,243 @@ export default function CesiumViewerComponent({
     let handler: CesiumAny | null = null;
 
     (async () => {
-      const Cesium = await import('cesium');
-      // @ts-expect-error -- CSS import for Cesium widgets
-      await import('cesium/Build/Cesium/Widgets/widgets.css');
-      window.CESIUM_BASE_URL = '/cesiumStatic';
-
-      if (destroyed || !containerRef.current) return;
-
-      cesiumRef.current = Cesium;
-      const terrain = createTerrainProvider(Cesium);
-
-      const viewer = new Cesium.Viewer(containerRef.current, {
-        timeline: false,
-        animation: false,
-        geocoder: false,
-        homeButton: false,
-        sceneModePicker: false,
-        baseLayerPicker: false,
-        navigationHelpButton: false,
-        fullscreenButton: false,
-        infoBox: false,
-        selectionIndicator: false,
-        requestRenderMode: true,
-        maximumRenderTimeChange: Infinity,
-        scene3DOnly: true,
-        msaaSamples: 4,
-        shadows: false,
-        ...(terrain ? { terrain } : {})
-      });
-
-      viewerRef.current = viewer;
-      viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#020611');
-      viewer.scene.globe.enableLighting = true;
-      viewer.scene.globe.showGroundAtmosphere = true;
-      viewer.scene.globe.depthTestAgainstTerrain = HAS_MAPTILER_TERRAIN;
-      if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
-      if (viewer.scene.sun) viewer.scene.sun.show = true;
-      if (viewer.scene.moon) viewer.scene.moon.show = false;
-      if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
-      viewer.clock.shouldAnimate = false;
+      if (!supportsWebGL()) {
+        setViewerIssue('当前浏览器环境不支持 WebGL，已切换到 2D 预览模式。');
+        return;
+      }
 
       try {
-        const creditContainer = viewer.cesiumWidget?.creditContainer as HTMLElement | undefined;
-        if (creditContainer) {
-          creditContainer.style.opacity = '0.32';
-          creditContainer.style.fontSize = '10px';
+        const Cesium = await import('cesium');
+        // @ts-expect-error -- CSS import for Cesium widgets
+        await import('cesium/Build/Cesium/Widgets/widgets.css');
+        window.CESIUM_BASE_URL = '/cesiumStatic';
+
+        if (destroyed || !containerRef.current) return;
+
+        cesiumRef.current = Cesium;
+        const terrain = createTerrainProvider(Cesium);
+
+        const viewer = new Cesium.Viewer(containerRef.current, {
+          timeline: false,
+          animation: false,
+          geocoder: false,
+          homeButton: false,
+          sceneModePicker: false,
+          baseLayerPicker: false,
+          navigationHelpButton: false,
+          fullscreenButton: false,
+          infoBox: false,
+          selectionIndicator: false,
+          requestRenderMode: true,
+          maximumRenderTimeChange: Infinity,
+          scene3DOnly: true,
+          msaaSamples: 4,
+          shadows: false,
+          ...(terrain ? { terrain } : {})
+        });
+
+        viewerRef.current = viewer;
+        setViewerIssue(null);
+        viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#020611');
+        viewer.scene.globe.enableLighting = true;
+        viewer.scene.globe.showGroundAtmosphere = true;
+        viewer.scene.globe.depthTestAgainstTerrain = HAS_MAPTILER_TERRAIN;
+        if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
+        if (viewer.scene.sun) viewer.scene.sun.show = true;
+        if (viewer.scene.moon) viewer.scene.moon.show = false;
+        if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+        viewer.clock.shouldAnimate = false;
+
+        try {
+          const creditContainer = viewer.cesiumWidget?.creditContainer as HTMLElement | undefined;
+          if (creditContainer) {
+            creditContainer.style.opacity = '0.32';
+            creditContainer.style.fontSize = '10px';
+          }
+        } catch {
+          // Ignore credit styling failures.
         }
-      } catch {
-        // Ignore credit styling failures.
-      }
 
-      viewer.imageryLayers.removeAll();
-      const baseProvider = await Cesium.TileMapServiceImageryProvider.fromUrl(
-        `${window.CESIUM_BASE_URL}/Assets/Textures/NaturalEarthII`
-      );
-      viewer.imageryLayers.addImageryProvider(baseProvider);
+        viewer.imageryLayers.removeAll();
+        const baseProvider = await Cesium.TileMapServiceImageryProvider.fromUrl(
+          `${window.CESIUM_BASE_URL}/Assets/Textures/NaturalEarthII`
+        );
+        viewer.imageryLayers.addImageryProvider(baseProvider);
 
-      try {
-        const primaryProvider = createPrimaryImageryProvider(Cesium);
-        viewer.imageryLayers.addImageryProvider(primaryProvider);
-      } catch {
-        // Primary imagery unavailable — NaturalEarthII remains as sole base.
-      }
+        try {
+          const primaryProvider = createPrimaryImageryProvider(Cesium);
+          viewer.imageryLayers.addImageryProvider(primaryProvider);
+        } catch {
+          // Primary imagery unavailable — NaturalEarthII remains as sole base.
+        }
 
-      if (!MAPTILER_API_KEY) {
         const labelProvider = new Cesium.UrlTemplateImageryProvider({
           url: 'https://basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png',
           credit: 'CartoDB'
         });
         const labelLayer = viewer.imageryLayers.addImageryProvider(labelProvider);
-        labelLayer.alpha = 0.85;
+        labelLayer.alpha = MAPTILER_API_KEY ? 0.92 : 0.85;
         labelLayer.show = true;
         labelLayerRef.current = labelLayer;
-      } else {
-        labelLayerRef.current = null;
-      }
 
-      handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-      handler.setInputAction((event: CesiumAny) => {
-        const picked = viewer.scene.pick(event.position);
-        const landmarkId = picked?.id?.properties?.landmarkId?.getValue?.();
-        if (landmarkId) {
-          const landmark = landmarks.find((item) => item.id === landmarkId);
-          if (landmark) {
-            onLandmarkSelectRef.current(landmark);
-            return;
+        handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+        handler.setInputAction((event: CesiumAny) => {
+          const picked = viewer.scene.pick(event.position);
+          const hotspotId = picked?.id?.properties?.hotspotId?.getValue?.();
+          if (hotspotId) {
+            const hotspot = hotspots.find((item) => item.id === hotspotId);
+            if (hotspot) {
+              onHotspotSelectRef.current(hotspot);
+              return;
+            }
           }
-        }
+          const landmarkId = picked?.id?.properties?.landmarkId?.getValue?.();
+          if (landmarkId) {
+            const landmark = landmarks.find((item) => item.id === landmarkId);
+            if (landmark) {
+              onLandmarkSelectRef.current(landmark);
+              return;
+            }
+          }
 
-        const cartesian = pickSurfacePosition(Cesium, viewer, event.position);
-        if (!cartesian) return;
+          const cartesian = pickSurfacePosition(Cesium, viewer, event.position);
+          if (!cartesian) return;
 
-        const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-        const lat = Cesium.Math.toDegrees(cartographic.latitude);
-        const lon = Cesium.Math.toDegrees(cartographic.longitude);
-        onLocationClickRef.current(lat, lon);
-      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+          const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+          const lat = Cesium.Math.toDegrees(cartographic.latitude);
+          const lon = Cesium.Math.toDegrees(cartographic.longitude);
+          onLocationClickRef.current(lat, lon);
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-      viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(15, 18, 24_000_000),
-        orientation: {
-          heading: Cesium.Math.toRadians(4),
-          pitch: Cesium.Math.toRadians(-85),
-          roll: 0
-        }
-      });
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(15, 18, 24_000_000),
+          orientation: {
+            heading: Cesium.Math.toRadians(4),
+            pitch: Cesium.Math.toRadians(-85),
+            roll: 0
+          }
+        });
 
-      viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date());
-      viewer.scene.requestRender();
+        viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date());
+        viewer.scene.requestRender();
 
-      onReady({
-        flyTo: (target) => {
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        onReady({
+          flyTo: (target) => {
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-              target.lon,
-              target.lat,
-              target.altitude ?? 3_000_000
-            ),
-            orientation: {
-              heading: Cesium.Math.toRadians(target.heading ?? 0),
-              pitch: Cesium.Math.toRadians(target.pitch ?? -55),
-              roll: 0
-            },
-            duration: reduceMotion ? 0 : 2
-          });
-        },
-        focusBody: () => undefined,
-        setViewPreset: () => undefined,
-        resetNorth: () => {
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          viewer.camera.flyTo({
-            destination: viewer.camera.positionWC,
-            orientation: {
-              heading: 0,
-              pitch: viewer.camera.pitch,
-              roll: 0
-            },
-            duration: reduceMotion ? 0 : 0.6
-          });
-        },
-        zoomIn: () => {
-          viewer.camera.zoomIn(viewer.camera.positionCartographic.height * 0.4);
-          viewer.scene.requestRender();
-        },
-        zoomOut: () => {
-          viewer.camera.zoomOut(viewer.camera.positionCartographic.height * 0.6);
-          viewer.scene.requestRender();
-        },
-        locateMoon: () => {
-          if (!viewer.scene.moon?.show) return;
-          const moonPos = Cesium.Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(viewer.clock.currentTime);
-          if (!moonPos) return;
-          const icrfToFixed = Cesium.Transforms.computeIcrfToFixedMatrix(viewer.clock.currentTime);
-          if (!icrfToFixed) return;
-          const fixedPos = Cesium.Matrix3.multiplyByVector(icrfToFixed, moonPos, new Cesium.Cartesian3());
-          const direction = Cesium.Cartesian3.normalize(fixedPos, new Cesium.Cartesian3());
-          const cameraHeight = 15_000_000;
-          const cameraCartesian = Cesium.Cartesian3.multiplyByScalar(direction, cameraHeight, new Cesium.Cartesian3());
+            viewer.camera.flyTo({
+              destination: Cesium.Cartesian3.fromDegrees(
+                target.lon,
+                target.lat,
+                target.altitude ?? 3_000_000
+              ),
+              orientation: {
+                heading: Cesium.Math.toRadians(target.heading ?? 0),
+                pitch: Cesium.Math.toRadians(target.pitch ?? -55),
+                roll: 0
+              },
+              duration: reduceMotion ? 0 : 2
+            });
+          },
+          focusBody: () => undefined,
+          setViewPreset: () => undefined,
+          resetNorth: () => {
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            viewer.camera.flyTo({
+              destination: viewer.camera.positionWC,
+              orientation: {
+                heading: 0,
+                pitch: viewer.camera.pitch,
+                roll: 0
+              },
+              duration: reduceMotion ? 0 : 0.6
+            });
+          },
+          zoomIn: () => {
+            viewer.camera.zoomIn(viewer.camera.positionCartographic.height * 0.4);
+            viewer.scene.requestRender();
+          },
+          zoomOut: () => {
+            viewer.camera.zoomOut(viewer.camera.positionCartographic.height * 0.6);
+            viewer.scene.requestRender();
+          },
+          locateMoon: () => {
+            if (!viewer.scene.moon?.show) return;
+            const moonPos = Cesium.Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(viewer.clock.currentTime);
+            if (!moonPos) return;
+            const icrfToFixed = Cesium.Transforms.computeIcrfToFixedMatrix(viewer.clock.currentTime);
+            if (!icrfToFixed) return;
+            const fixedPos = Cesium.Matrix3.multiplyByVector(icrfToFixed, moonPos, new Cesium.Cartesian3());
+            const direction = Cesium.Cartesian3.normalize(fixedPos, new Cesium.Cartesian3());
+            const cameraHeight = 15_000_000;
+            const cameraCartesian = Cesium.Cartesian3.multiplyByScalar(direction, cameraHeight, new Cesium.Cartesian3());
 
-          // Compute look direction from camera toward the moon
-          const lookDir = Cesium.Cartesian3.subtract(fixedPos, cameraCartesian, new Cesium.Cartesian3());
-          const lookDirNorm = Cesium.Cartesian3.normalize(lookDir, new Cesium.Cartesian3());
-          const right = Cesium.Cartesian3.cross(lookDirNorm, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3());
-          Cesium.Cartesian3.normalize(right, right);
-          const up = Cesium.Cartesian3.cross(right, lookDirNorm, new Cesium.Cartesian3());
-          Cesium.Cartesian3.normalize(up, up);
+            const lookDir = Cesium.Cartesian3.subtract(fixedPos, cameraCartesian, new Cesium.Cartesian3());
+            const lookDirNorm = Cesium.Cartesian3.normalize(lookDir, new Cesium.Cartesian3());
+            const right = Cesium.Cartesian3.cross(lookDirNorm, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(right, right);
+            const up = Cesium.Cartesian3.cross(right, lookDirNorm, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(up, up);
 
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          viewer.camera.flyTo({
-            destination: cameraCartesian,
-            orientation: {
-              direction: lookDirNorm,
-              up: up
-            },
-            duration: reduceMotion ? 0 : 2.5
-          });
-        },
-        locateSun: () => {
-          const sunPos = Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(viewer.clock.currentTime);
-          if (!sunPos) return;
-          const icrfToFixed = Cesium.Transforms.computeIcrfToFixedMatrix(viewer.clock.currentTime);
-          if (!icrfToFixed) return;
-          const fixedPos = Cesium.Matrix3.multiplyByVector(icrfToFixed, sunPos, new Cesium.Cartesian3());
-          const sunDir = Cesium.Cartesian3.normalize(fixedPos, new Cesium.Cartesian3());
-          const cameraHeight = 18_000_000;
-          const cameraCartesian = Cesium.Cartesian3.multiplyByScalar(sunDir, cameraHeight, new Cesium.Cartesian3());
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            viewer.camera.flyTo({
+              destination: cameraCartesian,
+              orientation: {
+                direction: lookDirNorm,
+                up: up
+              },
+              duration: reduceMotion ? 0 : 2.5
+            });
+          },
+          locateSun: () => {
+            const sunPos = Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(viewer.clock.currentTime);
+            if (!sunPos) return;
+            const icrfToFixed = Cesium.Transforms.computeIcrfToFixedMatrix(viewer.clock.currentTime);
+            if (!icrfToFixed) return;
+            const fixedPos = Cesium.Matrix3.multiplyByVector(icrfToFixed, sunPos, new Cesium.Cartesian3());
+            const sunDir = Cesium.Cartesian3.normalize(fixedPos, new Cesium.Cartesian3());
+            const cameraHeight = 18_000_000;
+            const cameraCartesian = Cesium.Cartesian3.multiplyByScalar(sunDir, cameraHeight, new Cesium.Cartesian3());
 
-          const lookDir = Cesium.Cartesian3.subtract(fixedPos, cameraCartesian, new Cesium.Cartesian3());
-          const lookDirNorm = Cesium.Cartesian3.normalize(lookDir, new Cesium.Cartesian3());
-          const right = Cesium.Cartesian3.cross(lookDirNorm, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3());
-          Cesium.Cartesian3.normalize(right, right);
-          const up = Cesium.Cartesian3.cross(right, lookDirNorm, new Cesium.Cartesian3());
-          Cesium.Cartesian3.normalize(up, up);
+            const lookDir = Cesium.Cartesian3.subtract(fixedPos, cameraCartesian, new Cesium.Cartesian3());
+            const lookDirNorm = Cesium.Cartesian3.normalize(lookDir, new Cesium.Cartesian3());
+            const right = Cesium.Cartesian3.cross(lookDirNorm, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(right, right);
+            const up = Cesium.Cartesian3.cross(right, lookDirNorm, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(up, up);
 
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          viewer.camera.flyTo({
-            destination: cameraCartesian,
-            orientation: {
-              direction: lookDirNorm,
-              up: up
-            },
-            duration: reduceMotion ? 0 : 2.5
-          });
-        },
-        locateSatellite: (catnr: number) => {
-          const entity = satelliteEntitiesRef.current.get(catnr);
-          if (!entity?.position) return;
-          const pos = entity.position.getValue(viewer.clock.currentTime);
-          if (!pos) return;
-          const carto = Cesium.Cartographic.fromCartesian(pos);
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height + 2_000_000),
-            orientation: {
-              heading: 0,
-              pitch: Cesium.Math.toRadians(-45),
-              roll: 0
-            },
-            duration: reduceMotion ? 0 : 2
-          });
-        }
-      });
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            viewer.camera.flyTo({
+              destination: cameraCartesian,
+              orientation: {
+                direction: lookDirNorm,
+                up: up
+              },
+              duration: reduceMotion ? 0 : 2.5
+            });
+          },
+          locateSatellite: (catnr: number) => {
+            const entity = satelliteEntitiesRef.current.get(catnr);
+            if (!entity?.position) return;
+            const pos = entity.position.getValue(viewer.clock.currentTime);
+            if (!pos) return;
+            const carto = Cesium.Cartographic.fromCartesian(pos);
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            viewer.camera.flyTo({
+              destination: Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height + 2_000_000),
+              orientation: {
+                heading: 0,
+                pitch: Cesium.Math.toRadians(-45),
+                roll: 0
+              },
+              duration: reduceMotion ? 0 : 2
+            });
+          }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Cesium 初始化失败';
+        setViewerIssue(`3D 地球初始化失败，已切换到 2D 预览模式。${message}`);
+      }
     })();
 
     return () => {
@@ -295,8 +327,39 @@ export default function CesiumViewerComponent({
         viewerRef.current.destroy();
         viewerRef.current = null;
       }
+      labelLayerRef.current = null;
+      cesiumRef.current = null;
+      onReady(null);
     };
-  }, [landmarks, onReady]);
+  }, [hotspots, landmarks, onReady]);
+
+  useEffect(() => {
+    if (!viewerIssue) return;
+
+    onReady({
+      flyTo: (target) => {
+        setFallbackCamera((state) => ({
+          centerLat: target.lat,
+          centerLon: target.lon,
+          zoom: target.altitude && target.altitude < 2_000_000 ? Math.max(state.zoom, 2.2) : Math.max(state.zoom, 1.35)
+        }));
+      },
+      focusBody: () => undefined,
+      setViewPreset: () => undefined,
+      resetNorth: () => {
+        setFallbackCamera((state) => ({ ...state, zoom: 1, centerLat: 18, centerLon: 15 }));
+      },
+      zoomIn: () => {
+        setFallbackCamera((state) => ({ ...state, zoom: Math.min(3.4, state.zoom * 1.25) }));
+      },
+      zoomOut: () => {
+        setFallbackCamera((state) => ({ ...state, zoom: Math.max(0.8, state.zoom / 1.25) }));
+      },
+      locateMoon: () => undefined,
+      locateSun: () => undefined,
+      locateSatellite: () => undefined
+    });
+  }, [viewerIssue, onReady]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -361,36 +424,105 @@ export default function CesiumViewerComponent({
       locationPinRef.current = null;
     }
 
-    if (selectedLocation) {
+    if (selectedLocation && selectedLocation.kind !== 'space-object') {
       locationPinRef.current = viewer.entities.add({
         name: selectedLocation.label ?? '选中位置',
         position: Cesium.Cartesian3.fromDegrees(selectedLocation.lon, selectedLocation.lat, 0),
-        billboard: {
-          image: PIN_SVG_URI,
-          width: 34,
-          height: 42,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY
-        },
-        label: {
-          text: selectedLocation.label ?? '',
-          font: '13px Oxanium, sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
+        point: {
+          pixelSize: 11,
+          color: Cesium.Color.fromCssColorString('#f7b955'),
+          outlineColor: Cesium.Color.fromCssColorString('#06101b'),
           outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -48),
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
+          scaleByDistance: new Cesium.NearFarScalar(900_000, 1.15, 26_000_000, 0.72)
+        },
+        label: {
+          text: compactMapLabel(selectedLocation.label ?? ''),
+          font: '600 12px "IBM Plex Sans", sans-serif',
+          fillColor: Cesium.Color.fromCssColorString('#edf6ff'),
+          style: Cesium.LabelStyle.FILL,
+          showBackground: true,
+          backgroundColor: Cesium.Color.fromCssColorString('#07111d').withAlpha(0.88),
+          backgroundPadding: new Cesium.Cartesian2(10, 7),
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+          pixelOffset: new Cesium.Cartesian2(16, -18),
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 18_000_000)
         }
       });
     }
 
     viewer.scene.requestRender();
   }, [selectedLocation]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const Cesium = cesiumRef.current;
+    if (!viewer || !Cesium || viewer.isDestroyed()) return;
+
+    for (const entity of routeEntitiesRef.current) {
+      viewer.entities.remove(entity);
+    }
+    routeEntitiesRef.current = [];
+
+    if (!routePreview) {
+      viewer.scene.requestRender();
+      return;
+    }
+
+    const positions = buildRoutePositions(Cesium, routePreview);
+    const strokeColor = Cesium.Color.fromCssColorString(routePreview.color ?? '#5eead4');
+
+    routeEntitiesRef.current.push(
+      viewer.entities.add({
+        name: `${routePreview.from.label} → ${routePreview.to.label}`,
+        polyline: {
+          positions,
+          width: 4,
+          material: new Cesium.PolylineGlowMaterialProperty({
+            color: strokeColor,
+            glowPower: 0.18
+          })
+        }
+      })
+    );
+
+    for (const endpoint of [routePreview.from, routePreview.to]) {
+      routeEntitiesRef.current.push(
+        viewer.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(endpoint.lon, endpoint.lat, 0),
+          point: {
+            pixelSize: 8,
+            color: strokeColor,
+            outlineColor: Cesium.Color.fromCssColorString('#07111d'),
+            outlineWidth: 3,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          },
+          label: {
+            text: compactMapLabel(endpoint.label),
+            font: '600 11px "IBM Plex Sans", sans-serif',
+            fillColor: Cesium.Color.fromCssColorString('#edf6ff'),
+            style: Cesium.LabelStyle.FILL,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString('#07111d').withAlpha(0.82),
+            backgroundPadding: new Cesium.Cartesian2(8, 6),
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+            pixelOffset: new Cesium.Cartesian2(12, -14),
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 22_000_000),
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          }
+        })
+      );
+    }
+
+    viewer.scene.requestRender();
+  }, [routePreview]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -423,7 +555,7 @@ export default function CesiumViewerComponent({
           },
           label: {
             text: `${landmark.name}\n${landmark.regionName}`,
-            font: '12px Oxanium, sans-serif',
+            font: '600 12px "IBM Plex Sans", sans-serif',
             fillColor: Cesium.Color.WHITE,
             outlineColor: Cesium.Color.BLACK.withAlpha(0.9),
             outlineWidth: 3,
@@ -449,6 +581,61 @@ export default function CesiumViewerComponent({
 
     viewer.scene.requestRender();
   }, [landmarks, layers.cityMarkers]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const Cesium = cesiumRef.current;
+    if (!viewer || !Cesium || viewer.isDestroyed()) return;
+
+    const activeIds = new Set(hotspots.map((hotspot) => hotspot.id));
+
+    for (const hotspot of hotspots) {
+      let entity = hotspotEntitiesRef.current.get(hotspot.id);
+      if (!entity) {
+        entity = viewer.entities.add({
+          name: hotspot.name,
+          properties: {
+            hotspotId: hotspot.id
+          },
+          position: Cesium.Cartesian3.fromDegrees(hotspot.lon, hotspot.lat, 0),
+          point: {
+            pixelSize: 9,
+            color: Cesium.Color.fromCssColorString(getHotspotColor(hotspot.priority)),
+            outlineColor: Cesium.Color.fromCssColorString('#06101b'),
+            outlineWidth: 3,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          },
+          label: {
+            text: compactMapLabel(hotspot.name),
+            font: '600 12px "IBM Plex Sans", sans-serif',
+            fillColor: Cesium.Color.fromCssColorString('#edf6ff'),
+            style: Cesium.LabelStyle.FILL,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString('#07111d').withAlpha(0.86),
+            backgroundPadding: new Cesium.Cartesian2(10, 7),
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+            pixelOffset: new Cesium.Cartesian2(14, -14),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 18_000_000)
+          }
+        });
+        hotspotEntitiesRef.current.set(hotspot.id, entity);
+      }
+
+      entity.show = true;
+    }
+
+    for (const [id, entity] of hotspotEntitiesRef.current) {
+      if (!activeIds.has(id)) {
+        viewer.entities.remove(entity);
+        hotspotEntitiesRef.current.delete(id);
+      }
+    }
+
+    viewer.scene.requestRender();
+  }, [hotspots]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -507,11 +694,11 @@ export default function CesiumViewerComponent({
               outlineWidth: 1,
               disableDepthTestDistance: Number.POSITIVE_INFINITY
             },
-            label: {
-              text: satellite.label,
-              font: '11px Oxanium, sans-serif',
-              fillColor: Cesium.Color.fromCssColorString(satellite.color),
-              outlineColor: Cesium.Color.BLACK,
+          label: {
+            text: compactMapLabel(satellite.label),
+            font: '600 11px "IBM Plex Sans", sans-serif',
+            fillColor: Cesium.Color.fromCssColorString(satellite.color),
+            outlineColor: Cesium.Color.BLACK,
               outlineWidth: 2,
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
               verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
@@ -629,18 +816,20 @@ export default function CesiumViewerComponent({
           outlineWidth: 1,
           heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
         },
-        label: {
-          text: annotation.text,
-          font: '12px Oxanium, sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -12),
-          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
-        }
-      });
+          label: {
+            text: compactMapLabel(annotation.text),
+            font: '600 12px "IBM Plex Sans", sans-serif',
+            fillColor: Cesium.Color.fromCssColorString('#edf6ff'),
+            style: Cesium.LabelStyle.FILL,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString('#07111d').withAlpha(0.86),
+            backgroundPadding: new Cesium.Cartesian2(10, 7),
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+            pixelOffset: new Cesium.Cartesian2(14, -12),
+            heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
+          }
+        });
 
       annotationEntitiesRef.current.set(annotation.id, entity);
     }
@@ -648,17 +837,48 @@ export default function CesiumViewerComponent({
     viewer.scene.requestRender();
   }, [annotations]);
 
-  return <div ref={containerRef} className="cesiumContainer" />;
+  return (
+    <div ref={containerRef} className="cesiumContainer">
+      {viewerIssue && (
+        <ViewerFallback
+          issue={viewerIssue}
+          camera={fallbackCamera}
+          landmarks={landmarks}
+          hotspots={hotspots}
+          selectedLocation={selectedLocation}
+          routePreview={routePreview}
+          showCityLabels={layers.cityMarkers}
+          onHotspotSelect={onHotspotSelect}
+        />
+      )}
+    </div>
+  );
 }
 
-const PIN_SVG_URI = 'data:image/svg+xml,' + encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">
-    <defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/></filter></defs>
-    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="#f7b955" filter="url(#s)"/>
-    <circle cx="16" cy="16" r="7" fill="#050913"/>
-    <circle cx="16" cy="16" r="4" fill="#5eead4"/>
-  </svg>`
-);
+function supportsWebGL() {
+  const canvas = document.createElement('canvas');
+  return Boolean(
+    canvas.getContext('webgl2') ||
+    canvas.getContext('webgl') ||
+    canvas.getContext('experimental-webgl')
+  );
+}
+
+function buildRoutePositions(Cesium: CesiumAny, routePreview: RoutePreview) {
+  const start = Cesium.Cartographic.fromDegrees(routePreview.from.lon, routePreview.from.lat);
+  const end = Cesium.Cartographic.fromDegrees(routePreview.to.lon, routePreview.to.lat);
+  const geodesic = new Cesium.EllipsoidGeodesic(start, end);
+  const positions = [];
+
+  for (let index = 0; index <= 72; index += 1) {
+    const fraction = index / 72;
+    const point = geodesic.interpolateUsingFraction(fraction);
+    const altitude = Math.sin(Math.PI * fraction) * 1_300_000;
+    positions.push(Cesium.Cartesian3.fromRadians(point.longitude, point.latitude, altitude));
+  }
+
+  return positions;
+}
 
 const LANDMARK_SVG_URI = 'data:image/svg+xml,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">

@@ -61,6 +61,18 @@ export const addAnnotationSchema = z.object({
 
 export const clearAnnotationsSchema = z.object({});
 
+const routeEndpointSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  label: z.string().trim().min(1).max(120)
+});
+
+export const showRouteSchema = z.object({
+  from: routeEndpointSchema,
+  to: routeEndpointSchema,
+  color: z.string().optional()
+});
+
 export const queryWeatherSchema = z.object({
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180)
@@ -119,6 +131,7 @@ export const toolSchemas = {
   toggle_layer: toggleLayerSchema,
   add_annotation: addAnnotationSchema,
   clear_annotations: clearAnnotationsSchema,
+  show_route: showRouteSchema,
   query_weather: queryWeatherSchema,
   query_earthquakes: queryEarthquakesSchema,
   query_moon_ephemeris: queryMoonEphemerisSchema,
@@ -297,6 +310,39 @@ export function getToolDefinitions() {
     },
     {
       type: 'function',
+      name: 'show_route',
+      description: 'Draw a route preview between two Earth locations after you have resolved both endpoints. Use for flight paths, travel corridors, or route comparisons.',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: {
+            type: 'object',
+            properties: {
+              lat: { type: 'number', minimum: -90, maximum: 90 },
+              lon: { type: 'number', minimum: -180, maximum: 180 },
+              label: { type: 'string', minLength: 1, maxLength: 120 }
+            },
+            required: ['lat', 'lon', 'label'],
+            additionalProperties: false
+          },
+          to: {
+            type: 'object',
+            properties: {
+              lat: { type: 'number', minimum: -90, maximum: 90 },
+              lon: { type: 'number', minimum: -180, maximum: 180 },
+              label: { type: 'string', minLength: 1, maxLength: 120 }
+            },
+            required: ['lat', 'lon', 'label'],
+            additionalProperties: false
+          },
+          color: { type: 'string' }
+        },
+        required: ['from', 'to'],
+        additionalProperties: false
+      }
+    },
+    {
+      type: 'function',
       name: 'query_weather',
       description: 'Query current weather at a specific latitude/longitude from Open-Meteo.',
       parameters: {
@@ -436,6 +482,8 @@ export function toAction(name: keyof typeof toolSchemas, payload: unknown): Agen
       return { type: 'add_annotation', payload: addAnnotationSchema.parse(payload) };
     case 'clear_annotations':
       return { type: 'clear_annotations', payload: clearAnnotationsSchema.parse(payload) };
+    case 'show_route':
+      return { type: 'show_route', payload: showRouteSchema.parse(payload) };
     case 'query_weather':
       throw new Error('query_weather does not map directly to a viewer action');
     case 'query_earthquakes':

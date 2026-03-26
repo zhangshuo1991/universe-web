@@ -1,6 +1,7 @@
 import { getLandmarkById } from '@/data/landmarks';
 import { reverseGeocode } from '@/server/geocode';
 import { buildLocationIntel } from '@/server/locationIntel/buildLocationIntel';
+import { findNearbyGeoHubs } from '@/server/locationIntel/geoHub';
 import { getEarthState, getSolarPointInfo } from '@/simulation/astronomy';
 import type { LocationDigest } from '@/types/explorer';
 import type { ObservationCitation } from '@/types/observation';
@@ -20,6 +21,7 @@ export async function buildLocationDigest({
 }: LocationDigestArgs): Promise<LocationDigest> {
   const landmark = getLandmarkById(landmarkId);
   const reverse = await safeReverseGeocode(lat, lon);
+  const nearbyGeoHub = reverse?.country ? null : findNearbyGeoHubs(lat, lon, 80, 1)[0] ?? null;
   const weather = await safeFetchWeather(lat, lon);
   const earthState = getEarthState(new Date());
   const solar = getSolarPointInfo(lat, lon, earthState);
@@ -28,15 +30,16 @@ export async function buildLocationDigest({
     landmark?.name ??
     placeName?.trim() ??
     reverse?.name ??
+    formatGeoHubLabel(nearbyGeoHub?.name, nearbyGeoHub?.country) ??
     formatCoordinate(lat, lon);
 
   const displayName =
     landmark?.description
       ? `${landmark.name} · ${landmark.regionName}, ${landmark.country}`
-      : reverse?.displayName ?? locationName;
+      : reverse?.displayName ?? formatGeoHubDisplayName(nearbyGeoHub) ?? locationName;
 
-  const country = landmark?.country ?? reverse?.country ?? null;
-  const region = landmark?.regionName ?? reverse?.region ?? null;
+  const country = landmark?.country ?? reverse?.country ?? nearbyGeoHub?.country ?? null;
+  const region = landmark?.regionName ?? reverse?.region ?? nearbyGeoHub?.region ?? null;
   const weatherSummary = weather
     ? `${weather.description ?? '天气数据可用'}，气温 ${weather.temperature?.toFixed(1) ?? '--'}°C`
     : null;
@@ -45,7 +48,7 @@ export async function buildLocationDigest({
   const intel = await buildLocationIntel({
     lat,
     lon,
-    locationName: landmark?.regionName ?? reverse?.name ?? locationName,
+    locationName: landmark?.regionName ?? reverse?.name ?? nearbyGeoHub?.name ?? locationName,
     region,
     country,
     weatherSummary,
@@ -76,7 +79,7 @@ export async function buildLocationDigest({
       region,
       lat,
       lon,
-      kind: landmark ? 'landmark' : reverse?.country ? 'region' : 'coordinate',
+      kind: landmark ? 'landmark' : reverse?.country || nearbyGeoHub ? 'region' : 'coordinate',
       landmarkId: landmark?.id ?? null,
       description: landmark?.description ?? null
     },
@@ -145,4 +148,20 @@ function formatCoordinate(lat: number, lon: number) {
   const ns = lat >= 0 ? 'N' : 'S';
   const ew = lon >= 0 ? 'E' : 'W';
   return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(lon).toFixed(2)}°${ew}`;
+}
+
+function formatGeoHubLabel(name?: string | null, country?: string | null) {
+  if (!name) return null;
+  return country ? `${name}, ${country}` : name;
+}
+
+function formatGeoHubDisplayName(
+  geoHub?: {
+    name: string;
+    region: string;
+    country: string;
+  } | null
+) {
+  if (!geoHub) return null;
+  return [geoHub.name, geoHub.region, geoHub.country].filter(Boolean).join(', ');
 }

@@ -12,6 +12,7 @@ type LocationDigestPanelProps = {
   activeSection: SidebarSection;
   landmarks: Landmark[];
   hotspots: LocationHotspot[];
+  hotspotMarkersEnabled: boolean;
   selectedLocation: SelectedLocation | null;
   locationDigest: LocationDigest | null;
   locationLoading: boolean;
@@ -20,7 +21,7 @@ type LocationDigestPanelProps = {
   layers: Record<ViewerLayerId, boolean>;
   satelliteCategories: Record<'stations' | 'weather' | 'science', boolean>;
   onSelectLandmark: (landmark: Landmark) => void;
-  onSelectHotspot: (hotspot: LocationHotspot) => void;
+  onToggleHotspotMarkers: () => void;
   onClearSelection: () => void;
   onToggleLayer: (layerId: ViewerLayerId) => void;
   onToggleSatelliteCategory: (category: 'stations' | 'weather' | 'science') => void;
@@ -62,6 +63,7 @@ export function LocationDigestPanel({
   activeSection,
   landmarks,
   hotspots,
+  hotspotMarkersEnabled,
   selectedLocation,
   locationDigest,
   locationLoading,
@@ -70,7 +72,7 @@ export function LocationDigestPanel({
   layers,
   satelliteCategories,
   onSelectLandmark,
-  onSelectHotspot,
+  onToggleHotspotMarkers,
   onClearSelection,
   onToggleLayer,
   onToggleSatelliteCategory,
@@ -80,6 +82,8 @@ export function LocationDigestPanel({
   const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   if (selectedLocation) {
+    const isSpaceObject = selectedLocation.kind === 'space-object';
+
     return (
       <aside className="detailPanel" aria-label="地点详情">
         <div className="detailPanelHeader">
@@ -95,16 +99,29 @@ export function LocationDigestPanel({
           </button>
         </div>
 
-        <div className="detailMetaGrid">
-          <div>
-            <span>纬度</span>
-            <strong>{selectedLocation.lat.toFixed(2)}°</strong>
+        {isSpaceObject ? (
+          <div className="detailMetaGrid">
+            <div>
+              <span>视图模式</span>
+              <strong>天空目标</strong>
+            </div>
+            <div>
+              <span>地图落点</span>
+              <strong>不显示</strong>
+            </div>
           </div>
-          <div>
-            <span>经度</span>
-            <strong>{selectedLocation.lon.toFixed(2)}°</strong>
+        ) : (
+          <div className="detailMetaGrid">
+            <div>
+              <span>纬度</span>
+              <strong>{selectedLocation.lat.toFixed(2)}°</strong>
+            </div>
+            <div>
+              <span>经度</span>
+              <strong>{selectedLocation.lon.toFixed(2)}°</strong>
+            </div>
           </div>
-        </div>
+        )}
 
         {selectedLocation.description && (
           <div className="detailStoryBlock">
@@ -395,54 +412,53 @@ export function LocationDigestPanel({
       {activeSection === 'highlights' && (
         <div className="detailStoryBlock">
           <div className="panelBlockHeader">
-            <span className="panelEyebrow">推荐观察</span>
+            <span className="panelEyebrow">热点标注</span>
             <strong>{hotspots.length} 个</strong>
           </div>
           {locationHotspotsLoading ? (
             <p className="emptyState">正在生成热点地点...</p>
           ) : hotspots.length > 0 ? (
-            <div className="hotspotList">
-              {hotspots.slice(0, 8).map((hotspot) => (
+            <>
+              <p>
+                热点地点已直接标注在地球上。点击地图上的热点点位可查看该地点的实时摘要、来源状态和新闻线索。
+              </p>
+              <div className="layerSubOptions">
                 <button
-                  key={hotspot.id}
                   type="button"
-                  className="hotspotCard"
-                  onClick={() => onSelectHotspot(hotspot)}
+                  className={`layerSubToggle ${hotspotMarkersEnabled ? 'active' : ''}`}
+                  onClick={onToggleHotspotMarkers}
                 >
-                  <div className="hotspotCardTop">
-                    <strong>{hotspot.name}</strong>
-                    <span>{hotspot.score}</span>
-                  </div>
-                  <p>{hotspot.reason}</p>
-                  <div className="hotspotCardMeta">
-                    <span>{hotspot.region}</span>
-                    <span>{hotspot.country}</span>
-                  </div>
+                  {hotspotMarkersEnabled ? '隐藏热点标注' : '显示热点标注'}
                 </button>
-              ))}
-            </div>
+              </div>
+              {!hotspotMarkersEnabled && (
+                <p className="emptyState">热点标注已关闭，请先开启后再点击地图热点点位。</p>
+              )}
+            </>
           ) : (
             <p className="emptyState">暂未生成热点地点，可稍后重试。</p>
           )}
         </div>
       )}
 
-      <div className="landmarkList">
-        {(activeSection === 'highlights' ? landmarks.slice(0, 8) : landmarks).map((landmark) => (
-          <button
-            key={landmark.id}
-            type="button"
-            className="landmarkListItem"
-            onClick={() => onSelectLandmark(landmark)}
-          >
-            <div>
-              <strong>{landmark.name}</strong>
-              <p>{landmark.regionName} · {landmark.country}</p>
-            </div>
-            <span>{landmark.category}</span>
-          </button>
-        ))}
-      </div>
+      {activeSection !== 'highlights' && (
+        <div className="landmarkList">
+          {landmarks.map((landmark) => (
+            <button
+              key={landmark.id}
+              type="button"
+              className="landmarkListItem"
+              onClick={() => onSelectLandmark(landmark)}
+            >
+              <div>
+                <strong>{landmark.name}</strong>
+                <p>{landmark.regionName} · {landmark.country}</p>
+              </div>
+              <span>{landmark.category}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </aside>
   );
 }

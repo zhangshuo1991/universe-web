@@ -252,8 +252,9 @@ export async function buildLocationIntel(args: BuildLocationIntelArgs): Promise<
     args.region,
     args.country,
     ...hubHints.map((hub) => hub.name),
-    ...hubHints.flatMap((hub) => hub.aliases.slice(0, 1))
-  ]).slice(0, 6);
+    ...hubHints.flatMap((hub) => hub.aliases.slice(0, 2)),
+    ...hubHints.flatMap((hub) => hub.keywords.slice(0, 2))
+  ]).slice(0, 10);
 
   const [gdeltResult, rssResult] = await Promise.allSettled([
     fetchGdeltLocationNews({ queryTerms, hubHints, maxResults: 6 }),

@@ -26,6 +26,21 @@ export type Annotation = {
   color?: string;
 };
 
+export type RoutePreview = {
+  id: string;
+  from: {
+    lat: number;
+    lon: number;
+    label: string;
+  };
+  to: {
+    lat: number;
+    lon: number;
+    label: string;
+  };
+  color?: string;
+};
+
 export type ViewerController = {
   flyTo: (target: {
     lat: number;
@@ -126,6 +141,7 @@ type ViewerStore = {
 
   // Annotations
   annotations: Annotation[];
+  routePreview: RoutePreview | null;
 
   // Layers
   layers: Record<ViewerLayerId, boolean>;
@@ -171,6 +187,8 @@ type ViewerStore = {
   addAnnotation: (annotation: Annotation) => void;
   replaceAnnotations: (annotations: Annotation[]) => void;
   clearAnnotations: () => void;
+  setRoutePreview: (route: RoutePreview | null) => void;
+  clearRoutePreview: () => void;
   pushChatMessage: (message: AgentMessage) => void;
   setSatellites: (satellites: SatelliteFeedItem[]) => void;
   setSelectedSatelliteId: (id: number | null) => void;
@@ -201,6 +219,7 @@ export const useViewerStore = create<ViewerStore>((set) => ({
   activePreset: 'full',
   interfaceMode: 'explore',
   annotations: [],
+  routePreview: null,
   layers: {
     dayNight: true,
     atmosphere: true,
@@ -264,6 +283,8 @@ export const useViewerStore = create<ViewerStore>((set) => ({
     })),
   replaceAnnotations: (annotations) => set({ annotations }),
   clearAnnotations: () => set({ annotations: [] }),
+  setRoutePreview: (route) => set({ routePreview: route }),
+  clearRoutePreview: () => set({ routePreview: null }),
   pushChatMessage: (message) =>
     set((state) => ({
       chatHistory: [...state.chatHistory, message]

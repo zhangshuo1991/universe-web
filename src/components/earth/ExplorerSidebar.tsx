@@ -7,6 +7,8 @@ type SidebarSection = 'explore' | 'highlights' | 'layers' | 'about';
 type ExplorerSidebarProps = {
   activeSection: SidebarSection;
   onChange: (section: SidebarSection) => void;
+  hotspotMarkersEnabled: boolean;
+  onToggleHotspotMarkers: () => void;
 };
 
 const SIDEBAR_ITEMS: Array<{
@@ -52,33 +54,55 @@ const SIDEBAR_ITEMS: Array<{
   }
 ];
 
-export function ExplorerSidebar({ activeSection, onChange }: ExplorerSidebarProps) {
+export function ExplorerSidebar({
+  activeSection,
+  onChange,
+  hotspotMarkersEnabled,
+  onToggleHotspotMarkers
+}: ExplorerSidebarProps) {
   return (
     <aside className="explorerSidebar" aria-label="探索导航">
-      <div className="sidebarBrand">
-        <span>Earth</span>
-        <strong>Observer</strong>
+      <div className="sidebarTopRow">
+        <div className="sidebarBrand">
+          <span>Earth</span>
+          <strong>Observer</strong>
+        </div>
+
+        <nav className="sidebarNav">
+          {SIDEBAR_ITEMS.map((item) => {
+            const active = item.id === activeSection;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`sidebarNavButton ${active ? 'active' : ''}`}
+                onClick={() => onChange(item.id)}
+                aria-pressed={active}
+                title={item.label}
+              >
+                <span className="sidebarNavIcon">{item.icon}</span>
+                <span className="sidebarNavLabel">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
-      <nav className="sidebarNav">
-        {SIDEBAR_ITEMS.map((item) => {
-          const active = item.id === activeSection;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`sidebarNavButton ${active ? 'active' : ''}`}
-              onClick={() => onChange(item.id)}
-              aria-pressed={active}
-              title={item.label}
-            >
-              <span className="sidebarNavIcon">{item.icon}</span>
-              <span className="sidebarNavLabel">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <div className="sidebarActionsRow">
+        <button
+          type="button"
+          className={`sidebarToggleButton ${hotspotMarkersEnabled ? 'active' : ''}`}
+          onClick={onToggleHotspotMarkers}
+          aria-pressed={hotspotMarkersEnabled}
+          title={hotspotMarkersEnabled ? '关闭热点标注' : '显示热点标注'}
+        >
+          <span className="sidebarToggleDot" aria-hidden="true" />
+          <span className="sidebarToggleLabel">
+            {hotspotMarkersEnabled ? '热点标注：开' : '热点标注：关'}
+          </span>
+        </button>
+      </div>
     </aside>
   );
 }

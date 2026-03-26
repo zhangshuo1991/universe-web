@@ -105,6 +105,23 @@ export type ClearAnnotationsAction = {
   payload: Record<string, never>;
 };
 
+export type ShowRouteAction = {
+  type: 'show_route';
+  payload: {
+    from: {
+      lat: number;
+      lon: number;
+      label: string;
+    };
+    to: {
+      lat: number;
+      lon: number;
+      label: string;
+    };
+    color?: string;
+  };
+};
+
 export type CompleteTaskAction = {
   type: 'complete_task';
   payload: {
@@ -124,6 +141,7 @@ export type AgentAction =
   | ToggleLayerAction
   | AddAnnotationAction
   | ClearAnnotationsAction
+  | ShowRouteAction
   | CompleteTaskAction;
 
 export type AgentContext = {

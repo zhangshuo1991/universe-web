@@ -13,6 +13,18 @@
   --danger: #f87171;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --text-caption: 0.75rem;
+  --text-label: 0.8125rem;
+  --text-ui: 0.875rem;
+  --text-body-compact: 0.9375rem;
+  --text-body: 1rem;
+  --text-title: 1.1875rem;
+  --leading-tight: 1.25;
+  --leading-ui: 1.45;
+  --leading-copy: 1.72;
+  --tracking-caps: 0.12em;
+  --tracking-label: 0.08em;
+  --tracking-title: 0.04em;
 }
 
 * {
@@ -33,6 +45,8 @@ body {
 body {
   font-family: var(--font-body), 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
   line-height: 1.6;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
 }
 
 body::before {
@@ -109,15 +123,15 @@ p {
   display: inline-block;
   font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-caps);
   color: var(--aqua);
-  font-size: 0.72rem;
+  font-size: var(--text-caption);
 }
 
 .emptyState {
   color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.65;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-copy);
 }
 
 .earthStage {
@@ -125,16 +139,21 @@ p {
   z-index: 1;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  grid-template-rows: 1fr;
-  grid-template-areas: 'sidebar viewer';
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'sidebar'
+    'viewer';
+  gap: 14px;
   padding: 18px;
 }
 
 .earthStage.detailVisible {
-  grid-template-columns: 72px minmax(0, 1fr) 360px;
-  grid-template-areas: 'sidebar viewer detail';
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'sidebar sidebar'
+    'viewer detail';
 }
 
 .earthStage:not(.detailVisible) .detailDrawerWrap,
@@ -201,24 +220,39 @@ p {
 
 .explorerSidebar {
   grid-area: sidebar;
-  border-radius: 28px;
-  padding: 14px 8px;
+  position: relative;
+  border-radius: 24px;
+  padding: 10px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.sidebarTopRow {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sidebarActionsRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
 }
 
 .sidebarBrand {
-  width: 100%;
-  min-height: 48px;
-  border-radius: 18px;
+  width: auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
   border: 1px solid rgba(94, 234, 212, 0.12);
   background: rgba(255, 255, 255, 0.02);
-  display: grid;
-  place-items: center;
-  text-align: center;
-  gap: 1px;
+  display: inline-flex;
+  align-items: center;
+  text-align: left;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .sidebarBrand span,
@@ -247,26 +281,27 @@ p {
 }
 
 .sidebarBrand strong {
-  letter-spacing: 0.06em;
-  font-size: 0.72rem;
+  letter-spacing: var(--tracking-title);
+  font-size: var(--text-caption);
 }
 
 .sidebarNav {
-  width: 100%;
-  display: grid;
-  gap: 10px;
+  width: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .sidebarNavButton {
-  width: 100%;
-  min-height: 48px;
-  padding: 8px 4px;
-  border-radius: 18px;
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 4px;
-  text-align: center;
+  width: auto;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -281,23 +316,56 @@ p {
 }
 
 .sidebarNavIcon {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.04);
 }
 
 .sidebarNavIcon svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: currentColor;
 }
 
 .sidebarNavLabel {
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+}
+
+.sidebarToggleButton {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.02);
+  font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  color: var(--muted);
+}
+
+.sidebarToggleButton.active {
+  border-color: rgba(94, 234, 212, 0.36);
+  background: rgba(94, 234, 212, 0.1);
+  color: var(--aqua);
+}
+
+.sidebarToggleDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgba(94, 234, 212, 0.18);
+}
+
+.sidebarToggleLabel {
+  white-space: nowrap;
 }
 
 .globePanel {
@@ -323,7 +391,7 @@ p {
   padding: 0 14px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.03);
-  font-size: 0.82rem;
+  font-size: var(--text-label);
 }
 
 .viewerFrame::after,
@@ -341,6 +409,124 @@ p {
 .cesiumContainer {
   position: absolute;
   inset: 0;
+}
+
+.viewerFallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(94, 234, 212, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(3, 9, 18, 0.94), rgba(4, 11, 20, 0.98));
+}
+
+.viewerFallbackNotice,
+.viewerFallbackLegend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(132, 173, 230, 0.16);
+  background: rgba(7, 16, 30, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.viewerFallbackNotice strong,
+.viewerFallbackLegend strong,
+.viewerFallbackLegend span {
+  font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
+}
+
+.viewerFallbackNotice strong {
+  color: var(--warm);
+  letter-spacing: var(--tracking-label);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+}
+
+.viewerFallbackNotice p {
+  color: var(--muted);
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-ui);
+}
+
+.viewerFallbackLegend {
+  justify-content: flex-start;
+}
+
+.viewerFallbackLegend span {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.viewerFallbackLegend strong {
+  color: var(--aqua);
+  font-size: var(--text-ui);
+  letter-spacing: var(--tracking-title);
+}
+
+.viewerFallbackMap {
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  border: 1px solid rgba(132, 173, 230, 0.14);
+  background:
+    radial-gradient(circle at top, rgba(247, 185, 85, 0.08), transparent 22%),
+    rgba(5, 10, 18, 0.92);
+}
+
+.viewerFallbackSea {
+  fill: rgba(6, 15, 28, 0.96);
+}
+
+.viewerFallbackGrid {
+  stroke: rgba(132, 173, 230, 0.12);
+  stroke-width: 1;
+}
+
+.viewerFallbackRoute {
+  fill: none;
+  stroke: url(#fallbackRouteStroke);
+  stroke-width: 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 12px rgba(94, 234, 212, 0.22));
+}
+
+.viewerFallbackLandmark circle,
+.viewerFallbackSelected circle,
+.viewerFallbackEndpoint circle {
+  fill: #5eead4;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 2;
+}
+
+.viewerFallbackEndpoint circle {
+  fill: #f7b955;
+}
+
+.viewerFallbackEndpoint:focus-visible circle {
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 3px;
+}
+
+.viewerFallbackLandmark text,
+.viewerFallbackSelected text,
+.viewerFallbackEndpoint text {
+  fill: var(--text);
+  font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
+  font-size: 0.875rem;
+  letter-spacing: var(--tracking-title);
+  paint-order: stroke;
+  stroke: rgba(2, 5, 11, 0.92);
+  stroke-width: 4px;
+  stroke-linejoin: round;
 }
 
 .placeSearchWrapper {
@@ -374,7 +560,8 @@ p {
   background: rgba(4, 11, 20, 0.88);
   backdrop-filter: blur(16px);
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-ui);
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
@@ -416,20 +603,23 @@ p {
 
 .placeSearchItem {
   width: 100%;
+  min-height: 44px;
   padding: 10px 12px;
   border: 0;
   border-radius: 12px;
   background: transparent;
   text-align: left;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   cursor: pointer;
-  transition: background-color 120ms ease;
+  outline: none;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.placeSearchItem:hover {
+.placeSearchItem:hover,
+.placeSearchItem[aria-selected='true'] {
   background: rgba(94, 234, 212, 0.08);
 }
 
@@ -446,15 +636,15 @@ p {
 }
 
 .placeSearchItem strong {
-  font-size: 0.86rem;
-  font-weight: 500;
-  line-height: 1.45;
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: var(--leading-ui);
 }
 
 .placeSearchItem span {
   flex-shrink: 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
   color: var(--muted);
   text-transform: uppercase;
   font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
@@ -477,8 +667,8 @@ p {
 }
 
 .globeControlBtn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 12px;
   background: transparent;
@@ -544,14 +734,16 @@ p {
 
 .viewerOverlay span {
   color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-caps);
+  line-height: var(--leading-ui);
   text-transform: uppercase;
 }
 
 .viewerOverlay strong {
-  font-size: 0.82rem;
-  letter-spacing: 0.05em;
+  font-size: var(--text-ui);
+  letter-spacing: var(--tracking-title);
+  line-height: var(--leading-tight);
   font-variant-numeric: tabular-nums;
 }
 
@@ -578,14 +770,16 @@ p {
 .detailPanelHeader h2 {
   margin-top: 8px;
   font-family: var(--font-display), sans-serif;
-  font-size: 1.2rem;
-  letter-spacing: 0.05em;
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-title);
 }
 
 .detailPanelHeader p {
   margin-top: 8px;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-copy);
 }
 
 .detailMetaGrid,
@@ -612,22 +806,25 @@ p {
 .providerPill span,
 .landmarkListItem span {
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-caps);
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
+  line-height: var(--leading-ui);
 }
 
 .detailMetaGrid strong,
 .detailMetrics strong {
-  font-size: 1rem;
-  letter-spacing: 0.05em;
+  font-size: var(--text-body);
+  letter-spacing: var(--tracking-title);
+  line-height: var(--leading-tight);
   font-variant-numeric: tabular-nums;
 }
 
 .detailMetaGrid p,
 .detailMetrics p {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
 }
 
 .detailStoryBlock {
@@ -641,8 +838,8 @@ p {
 
 .detailStoryBlock p {
   color: var(--text);
-  font-size: 0.94rem;
-  line-height: 1.72;
+  font-size: var(--text-body);
+  line-height: var(--leading-copy);
 }
 
 .panelBlockHeader {
@@ -672,9 +869,9 @@ p {
 }
 
 .toggleArrow {
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   color: var(--muted);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
 }
 
 .promptChipGrid {
@@ -687,7 +884,8 @@ p {
   min-height: 44px;
   padding: 0 14px;
   border-radius: 999px;
-  font-size: 0.82rem;
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
   background: rgba(94, 234, 212, 0.08);
   transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out);
 }
@@ -711,8 +909,8 @@ p {
   border: 1px solid rgba(132, 173, 230, 0.14);
   background: rgba(10, 20, 36, 0.52);
   color: var(--text);
-  font-size: 0.86rem;
-  line-height: 1.65;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-copy);
 }
 
 .tagList {
@@ -728,7 +926,8 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.78rem;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
   color: var(--muted);
   text-align: center;
   font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
@@ -776,12 +975,13 @@ p {
   border-radius: 16px;
   border: 1px solid rgba(132, 173, 230, 0.14);
   background: rgba(10, 20, 36, 0.52);
-  font-size: 0.84rem;
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
 }
 
 .sourceBreakdownItem strong {
   font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-title);
 }
 
 .newsList,
@@ -829,8 +1029,9 @@ p {
 }
 
 .hotspotCardTop strong {
-  font-size: 0.92rem;
-  letter-spacing: 0.04em;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-ui);
+  letter-spacing: var(--tracking-title);
 }
 
 .hotspotCardTop span,
@@ -848,24 +1049,26 @@ p {
   justify-content: center;
   background: rgba(247, 185, 85, 0.1);
   color: var(--warm);
-  font-size: 0.78rem;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
 }
 
 .hotspotCard p {
   color: var(--muted);
-  font-size: 0.82rem;
-  line-height: 1.6;
+  font-size: var(--text-ui);
+  line-height: var(--leading-copy);
 }
 
 .hotspotCardMeta {
   color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  line-height: var(--leading-ui);
 }
 
 .newsCard strong {
-  font-size: 0.9rem;
-  line-height: 1.55;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-copy);
 }
 
 .newsCard div {
@@ -873,8 +1076,9 @@ p {
   justify-content: space-between;
   gap: 10px;
   color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  line-height: var(--leading-ui);
 }
 
 .newsCard:hover {
@@ -903,16 +1107,17 @@ p {
 .layerCard strong,
 .providerPill strong {
   display: block;
-  font-size: 0.94rem;
-  letter-spacing: 0.04em;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-ui);
+  letter-spacing: var(--tracking-title);
 }
 
 .landmarkListItem p,
 .layerCard p {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.55;
+  font-size: var(--text-ui);
+  line-height: var(--leading-copy);
 }
 
 .landmarkListItem:hover {
@@ -947,8 +1152,8 @@ p {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 0.84rem;
-  line-height: 1.55;
+  font-size: var(--text-ui);
+  line-height: var(--leading-copy);
 }
 
 .citationItem a {
@@ -969,7 +1174,7 @@ p {
   border-radius: 6px;
   background: rgba(94, 234, 212, 0.12);
   color: var(--aqua);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   font-weight: 600;
   display: grid;
   place-items: center;
@@ -979,8 +1184,8 @@ p {
 .citationProvider {
   flex-shrink: 0;
   margin-left: auto;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
   color: var(--muted);
   text-transform: uppercase;
   font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
@@ -997,7 +1202,8 @@ p {
   min-height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
   border: 1px solid rgba(132, 173, 230, 0.16);
   background: rgba(10, 20, 36, 0.6);
   color: var(--muted);
@@ -1020,7 +1226,8 @@ p {
   min-height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
   border: 1px solid rgba(247, 185, 85, 0.28);
   background: rgba(247, 185, 85, 0.08);
   color: var(--warm);
@@ -1092,8 +1299,8 @@ p {
 }
 
 .chatDrawerToggle strong {
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-title);
   font-family: var(--font-display), 'IBM Plex Sans', sans-serif;
 }
 
@@ -1104,7 +1311,7 @@ p {
   border-radius: 50%;
   background: rgba(94, 234, 212, 0.14);
   color: var(--aqua);
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   font-weight: 600;
   display: grid;
   place-items: center;
@@ -1134,20 +1341,20 @@ p {
 }
 
 .chatPreview span {
-  font-size: 0.72rem;
+  font-size: var(--text-label);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-caps);
   color: var(--muted);
 }
 
 .chatPreview p {
-  font-size: 0.88rem;
-  line-height: 1.65;
+  font-size: var(--text-body-compact);
+  line-height: var(--leading-copy);
 }
 
 .markdownBody {
-  font-size: 0.88rem;
-  line-height: 1.72;
+  font-size: var(--text-body);
+  line-height: var(--leading-copy);
 }
 
 .markdownBody p {
@@ -1196,8 +1403,9 @@ p {
 .markdownBody h1,
 .markdownBody h2,
 .markdownBody h3 {
-  font-size: 0.94rem;
+  font-size: var(--text-body-compact);
   font-weight: 600;
+  line-height: var(--leading-ui);
   margin: 0.6em 0 0.3em;
 }
 
@@ -1290,8 +1498,9 @@ input[type='search']:focus {
 .loadingHint {
   text-align: center;
   color: var(--muted);
-  font-size: 0.84rem;
-  letter-spacing: 0.06em;
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
+  letter-spacing: var(--tracking-title);
 }
 
 .loading-pulse {
@@ -1304,14 +1513,15 @@ input[type='search']:focus {
   display: grid;
   place-items: center;
   font-family: var(--font-display), sans-serif;
-  letter-spacing: 0.14em;
+  font-size: var(--text-ui);
+  letter-spacing: var(--tracking-caps);
   color: var(--muted);
   animation: subtle-pulse 2s ease-in-out infinite;
 }
 
 @media (min-width: 881px) {
   .sidebarNavLabel {
-    display: none;
+    display: inline;
   }
 }
 
@@ -1323,11 +1533,12 @@ input[type='search']:focus {
 
 @media (max-width: 1280px) {
   .earthStage.detailVisible {
-    grid-template-columns: 72px minmax(0, 1fr);
-    grid-template-rows: 1fr auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas:
-      'sidebar viewer'
-      'sidebar detail';
+      'sidebar'
+      'viewer'
+      'detail';
   }
 
   .detailPanel {
@@ -1353,16 +1564,20 @@ input[type='search']:focus {
     left: 0;
     right: 0;
     z-index: 30;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
+    display: grid;
+    align-items: stretch;
+    gap: 6px;
+    padding: calc(6px + env(safe-area-inset-top)) 12px 8px;
     border-radius: 0;
-    height: 56px;
+    min-height: calc(88px + env(safe-area-inset-top));
     background: rgba(5, 9, 19, 0.92);
     backdrop-filter: blur(20px);
     border: none;
     border-bottom: 1px solid var(--line);
+  }
+
+  .sidebarTopRow {
+    gap: 8px;
   }
 
   .sidebarBrand {
@@ -1378,6 +1593,8 @@ input[type='search']:focus {
 
   .sidebarNav {
     display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: 4px;
   }
 
@@ -1403,7 +1620,19 @@ input[type='search']:focus {
   }
 
   .sidebarNavLabel {
-    font-size: 0.68rem;
+    font-size: var(--text-caption);
+  }
+
+  .sidebarToggleButton {
+    min-height: 32px;
+    padding: 0 10px;
+    border-radius: 10px;
+    gap: 6px;
+  }
+
+  .sidebarToggleLabel {
+    font-size: var(--text-caption);
+    letter-spacing: var(--tracking-label);
   }
 
   .globePanel {
@@ -1458,14 +1687,16 @@ input[type='search']:focus {
   .drawerHandle {
     pointer-events: auto;
     display: flex;
+    align-items: center;
     justify-content: center;
-    padding: 10px 0 6px;
+    min-height: 44px;
+    padding: 0;
     border: none;
     border-radius: 20px 20px 0 0;
     background: rgba(5, 9, 19, 0.94);
     backdrop-filter: blur(20px);
     border-top: 1px solid var(--line);
-    cursor: grab;
+    cursor: pointer;
   }
 
   .drawerHandle:hover {
@@ -1530,7 +1761,7 @@ input[type='search']:focus {
   }
 
   .placeSearchWrapper {
-    top: 64px;
+    top: calc(96px + env(safe-area-inset-top));
     left: 12px;
     width: min(280px, calc(100% - 24px));
   }
@@ -1538,6 +1769,10 @@ input[type='search']:focus {
 
 @media (max-width: 560px) {
   .sidebarNavLabel {
+    display: none;
+  }
+
+  .sidebarToggleLabel {
     display: none;
   }
 

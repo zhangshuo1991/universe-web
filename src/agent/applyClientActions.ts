@@ -7,6 +7,10 @@ function annotationId(lat: number, lon: number, text: string) {
   return `annotation:${lat.toFixed(3)}:${lon.toFixed(3)}:${text}`;
 }
 
+function routeId(fromLabel: string, toLabel: string) {
+  return `route:${fromLabel}:${toLabel}`;
+}
+
 export function applyClientActions(actions: AgentAction[]) {
   const state = useViewerStore.getState();
 
@@ -60,6 +64,14 @@ export function applyClientActions(actions: AgentAction[]) {
         break;
       case 'clear_annotations':
         state.clearAnnotations();
+        break;
+      case 'show_route':
+        state.setRoutePreview({
+          id: routeId(action.payload.from.label, action.payload.to.label),
+          from: action.payload.from,
+          to: action.payload.to,
+          color: action.payload.color
+        });
         break;
       case 'complete_task':
         break;
